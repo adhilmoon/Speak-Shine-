@@ -176,6 +176,40 @@ async function startBot() {
       });
     }
 
+    if (text?.trim() === "/leaderboard") {
+      const users = await User.find();
+
+      if (users.length === 0) {
+        return safeSend(sock, chatId, {
+          text: "⚠️ No users found!",
+        });
+      }
+
+      // ✅ Sort: completed first
+      const sorted = users.sort((a, b) => b.completed - a.completed);
+
+      let msg = "🏆 *Daily Leaderboard*\n\n";
+
+      sorted.forEach((u, i) => {
+        const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "🔹";
+
+        const status = u.completed ? "✅ Completed" : "❌ Not Completed";
+
+        msg += `${medal} @${u.userId.split("@")[0]} → ${status}\n`;
+      });
+
+      msg += "\n💰 *Fines:*\n";
+
+      users.forEach((u) => {
+        msg += `@${u.userId.split("@")[0]} → ₹${u.fine}\n`;
+      });
+
+      return safeSend(sock, chatId, {
+        text: msg,
+        mentions: users.map((u) => u.userId),
+      });
+    }
+
     // =============================
     // 🎥 VIDEO LOGIC
     // =============================
