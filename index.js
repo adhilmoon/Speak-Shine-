@@ -8,47 +8,30 @@ import dotenv from "dotenv";
 import { connectDB } from "./db.js";
 import User from "./models/userSchema.js";
 import Question from "./models/questionSchema.js";
+import generateVoice from "./generateAudio.js";
+import fs from "fs";
 
 dotenv.config();
 connectDB();
 
 const TARGET_GROUP = process.env.TARGET_GROUP;
 const TEST_MODE = process.env.TEST_MODE === "true";
+const TIMEZONE = "Asia/Kolkata";
 
-// ✅ SAFE SEND (retry + timeout fix)
+// =============================
+// ✅ SAFE SEND
+// =============================
 const safeSend = async (sock, jid, msg) => {
   try {
     await sock.sendMessage(jid, msg);
-  } catch (err) {
-    console.log("❌ Send failed, retrying...", err?.message);
-
-    setTimeout(async () => {
-      try {
-        await sock.sendMessage(jid, msg);
-      } catch {
-        console.log("❌ Retry failed");
-      }
-    }, 2000);
+  } catch {
+    setTimeout(() => sock.sendMessage(jid, msg), 2000);
   }
 };
 
-// 🔥 LOAD USERS
-async function loadGroup(sock) {
-  try {
-    const meta = await sock.groupMetadata(TARGET_GROUP);
-    const myId = sock.user.id;
-
-    for (let p of meta.participants) {
-      if (p.id === myId) continue;
-      await User.findOneAndUpdate({ userId: p.id }, {}, { upsert: true });
-    }
-
-    console.log("👥 Users synced:", meta.participants.length);
-  } catch {
-    setTimeout(() => loadGroup(sock), 5000);
-  }
-}
-
+// =============================
+// 🔥 START BOT
+// =============================
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState("auth");
   const { version } = await fetchLatestBaileysVersion();
@@ -57,17 +40,12 @@ async function startBot() {
     version,
     auth: state,
     browser: ["Ubuntu", "Chrome", "20.0.04"],
-
-    // 🔥 IMPORTANT FIXES
-    keepAliveIntervalMs: 60000,
-    connectTimeoutMs: 60000,
-    defaultQueryTimeoutMs: 60000,
   });
 
   sock.ev.on("creds.update", saveCreds);
 
   // =============================
-  // 📩 MESSAGE HANDLER
+  // 📩 VIDEO HANDLER
   // =============================
   sock.ev.on("messages.upsert", async ({ messages }) => {
     const msg = messages[0];
@@ -75,7 +53,6 @@ async function startBot() {
 
     const chatId = msg.key.remoteJid;
     if (chatId !== TARGET_GROUP) return;
-    if (!msg.key.participant) return;
 
     const user = msg.key.participant;
 
@@ -84,136 +61,6 @@ async function startBot() {
       msg.message?.viewOnceMessage?.message ||
       msg.message;
 
-    if (!content) return;
-
-    const text =
-      content?.conversation ||
-      content?.extendedTextMessage?.text ||
-      content?.imageMessage?.caption ||
-      "";
-
-    console.log("📩 TEXT:", text);
-
-    const groupMeta = await sock.groupMetadata(TARGET_GROUP);
-    const isAdmin = groupMeta.participants.find(
-      (p) => p.id === user && p.admin,
-    );
-
-    // =============================
-    // 🧠 COMMANDS
-    // =============================
-
-    if (text?.trim() === "/fine") {
-      const users = await User.find();
-
-      if (users.length === 0) {
-        return safeSend(sock, chatId, {
-          text: "⚠️ No users found!",
-        });
-      }
-
-      let msgText = "💰 *Fine Report:*\n\n";
-
-      users.forEach((u) => {
-        msgText += `@${u.userId.split("@")[0]} → ₹${u.fine}\n`;
-      });
-
-      return safeSend(sock, chatId, {
-        text: msgText,
-        mentions: users.map((u) => u.userId),
-      });
-    }
-
-    if (text?.trim() === "/reset") {
-      if (!isAdmin) {
-        return safeSend(sock, chatId, {
-          text: "❌ Only admin can reset",
-        });
-      }
-
-      await User.updateMany(
-        {},
-        {
-          fine: 0,
-          completed: false,
-        },
-      );
-
-      return safeSend(sock, chatId, {
-        text: "🔄 All fines & attendance reset!",
-      });
-    }
-
-    if (text?.trim() === "/resetday") {
-      if (!isAdmin) {
-        return safeSend(sock, chatId, {
-          text: "❌ Only admin can reset day",
-        });
-      }
-
-      await User.updateMany({}, { completed: false });
-      return safeSend(sock, chatId, {
-        text: "🔄 Today's attendance reset!",
-      });
-    }
-
-    if (text?.trim() === "/resetweek") {
-      if (!isAdmin) {
-        return safeSend(sock, chatId, {
-          text: "❌ Only admin can reset week",
-        });
-      }
-
-      await User.updateMany({}, { fine: 0 });
-      return safeSend(sock, chatId, {
-        text: "💰 Weekly fines reset!",
-      });
-    }
-
-    if (text?.trim() === "/testdm") {
-      await safeSend(sock, process.env.OWNER_NUMBER, {
-        text: "🔥 DM test success!",
-      });
-    }
-
-    if (text?.trim() === "/leaderboard") {
-      const users = await User.find();
-
-      if (users.length === 0) {
-        return safeSend(sock, chatId, {
-          text: "⚠️ No users found!",
-        });
-      }
-
-      // ✅ Sort: completed first
-      const sorted = users.sort((a, b) => b.completed - a.completed);
-
-      let msg = "🏆 *Daily Leaderboard*\n\n";
-
-      sorted.forEach((u, i) => {
-        const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "🔹";
-
-        const status = u.completed ? "✅ Completed" : "❌ Not Completed";
-
-        msg += `${medal} @${u.userId.split("@")[0]} → ${status}\n`;
-      });
-
-      msg += "\n💰 *Fines:*\n";
-
-      users.forEach((u) => {
-        msg += `@${u.userId.split("@")[0]} → ₹${u.fine}\n`;
-      });
-
-      return safeSend(sock, chatId, {
-        text: msg,
-        mentions: users.map((u) => u.userId),
-      });
-    }
-
-    // =============================
-    // 🎥 VIDEO LOGIC
-    // =============================
-
     const video =
       content?.videoMessage ||
       content?.ephemeralMessage?.message?.videoMessage ||
@@ -221,11 +68,9 @@ async function startBot() {
 
     if (!video) return;
 
-    const duration = video.seconds || 0;
-
-    if (duration < 60) {
+    if ((video.seconds || 0) < 60) {
       return safeSend(sock, chatId, {
-        text: `❌ @${user.split("@")[0]} video must be at least 1 minute!`,
+        text: `❌ @${user.split("@")[0]} Video must be 1 min`,
         mentions: [user],
       });
     }
@@ -234,7 +79,7 @@ async function startBot() {
 
     if (existing?.completed) {
       return safeSend(sock, chatId, {
-        text: `⚠️ @${user.split("@")[0]} already submitted`,
+        text: `⚠️ @${user.split("@")[0]} Already submitted`,
         mentions: [user],
       });
     }
@@ -246,162 +91,175 @@ async function startBot() {
     );
 
     await safeSend(sock, chatId, {
-      text: `✅ @${user.split("@")[0]} completed task`,
+      text: `✅ @${user.split("@")[0]} Completed`,
       mentions: [user],
     });
   });
 
   // =============================
-  // ⏰ REMINDER
+  // ⏰ DAY REMINDERS
   // =============================
-  cron.schedule(TEST_MODE ? "*/2 * * * *" : "30 3,7,11,15 * * *", async () => {
-    const users = await User.find();
-    const notDone = users.filter((u) => !u.completed);
-    if (notDone.length === 0) return;
+  cron.schedule(
+    TEST_MODE ? "*/2 * * * *" : "0 9,13,17 * * *",
+    async () => {
+      const users = await User.find();
+      const pending = users.filter((u) => !u.completed);
+      if (!pending.length) return;
 
-    let msg = "⏰ *Reminder! Submit your video 🎥*\n\n";
+      let msg = "⏰ Reminder\n\nSubmit your video 🎥\n\n";
+      pending.forEach((u) => {
+        msg += `👉 @${u.userId.split("@")[0]}\n`;
+      });
 
-    notDone.forEach((u) => {
-      msg += `@${u.userId.split("@")[0]}\n`;
-    });
-
-    await safeSend(sock, TARGET_GROUP, {
-      text: msg,
-      mentions: notDone.map((u) => u.userId),
-    });
-  });
+      await safeSend(sock, TARGET_GROUP, {
+        text: msg,
+        mentions: pending.map((u) => u.userId),
+      });
+    },
+    { timezone: TIMEZONE },
+  );
 
   // =============================
-  // 🚨 FINAL REPORT
+  // 🌙 11 PM DM (PENDING ONLY)
   // =============================
-  cron.schedule(TEST_MODE ? "*/3 * * * *" : "30 18 * * *", async () => {
-    const users = await User.find();
-    const notDone = users.filter((u) => !u.completed);
+  cron.schedule(
+    TEST_MODE ? "*/2 * * * *" : "0 23 * * *",
+    async () => {
+      const users = await User.find();
+      const pending = users.filter((u) => !u.completed);
+      if (!pending.length) return;
 
-    let msg = "📊 *Final Report + Leaderboard*\n\n";
-
-    // =============================
-    // 🏆 LEADERBOARD (FIRST)
-    // =============================
-    const sorted = users.sort((a, b) => b.completed - a.completed);
-
-    msg += "🏆 *Leaderboard:*\n\n";
-
-    sorted.forEach((u, i) => {
-      const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "🔹";
-
-      msg += `${medal} @${u.userId.split("@")[0]} → ${
-        u.completed ? "✅" : "❌"
-      }\n`;
-    });
-
-    msg += "\n";
-
-    // =============================
-    // ❌ NOT COMPLETED + FINE
-    // =============================
-    if (notDone.length === 0) {
-      msg += "🎉 Everyone completed today's task!\n\n";
-    } else {
-      msg += "❌ *Not Completed:*\n\n";
-
-      for (let u of notDone) {
-        if (!TEST_MODE) {
-          u.fine += 2;
-          await u.save();
-        }
-
-        msg += `@${u.userId.split("@")[0]} → ₹${u.fine}\n`;
+      for (let u of pending) {
+        await safeSend(sock, u.userId, {
+          text: "🚨 Reminder\n\n⚠️ You haven't submitted your video!\n\n⏳ Submit before 12 AM",
+        });
       }
 
+      console.log("📩 11PM DM sent");
+    },
+    { timezone: TIMEZONE },
+  );
+
+  // =============================
+  // 🚨 11:50 PM WARNING + AI VOICE
+  // =============================
+  cron.schedule(
+    TEST_MODE ? "*/2 * * * *" : "50 21 * * *",
+    async () => {
+      const users = await User.find();
+      const pending = users.filter((u) => !u.completed);
+      if (!pending.length) return;
+
+      let msg = "🚨 LAST 10 MINUTES!\n\n⚠️ Submit NOW or fine will apply!\n\n";
+
+      pending.forEach((u) => {
+        msg += `👉 @${u.userId.split("@")[0]}\n`;
+      });
+
+      await safeSend(sock, TARGET_GROUP, {
+        text: msg,
+        mentions: pending.map((u) => u.userId),
+      });
+
+      // 🔊 AI VOICE
+      const filePath = "./temp-warning.mp3";
+
+      await generateVoice(
+        "Last 10 minutes. Submit your video now or fine will be applied.",
+        filePath,
+      );
+
+      await sock.sendMessage(TARGET_GROUP, {
+        audio: fs.readFileSync(filePath),
+        mimetype: "audio/mp4",
+        ptt: true,
+      });
+
+      fs.unlinkSync(filePath);
+
+      console.log("🚨 11:50 warning + voice sent");
+    },
+    { timezone: TIMEZONE },
+  );
+
+  // =============================
+  // 📊 FINAL REPORT (12 AM)
+  // =============================
+  cron.schedule(
+    TEST_MODE ? "*/3 * * * *" : "0 0 * * *",
+    async () => {
+      const users = await User.find();
+      const notDone = users.filter((u) => !u.completed);
+
+      let msg = "📊 Yesterday Report\n\n";
+
+      msg += "🏆 Leaderboard\n\n";
+      users
+        .sort((a, b) => b.completed - a.completed)
+        .forEach((u, i) => {
+          const medal = ["🥇", "🥈", "🥉"][i] || "🔹";
+          msg += `${medal} @${u.userId.split("@")[0]} → ${
+            u.completed ? "✅" : "❌"
+          }\n`;
+        });
+
       msg += "\n";
-    }
 
-    // =============================
-    // 💰 TOTAL FINES
-    // =============================
-    msg += "💰 *Total Fines:*\n";
+      if (notDone.length) {
+        msg += "❌ Not Completed\n\n";
+        for (let u of notDone) {
+          if (!TEST_MODE) {
+            u.fine += 2;
+            await u.save();
+          }
+          msg += `👉 @${u.userId.split("@")[0]} → ₹${u.fine}\n`;
+        }
+        msg += "\n";
+      } else {
+        msg += "🎉 Everyone completed!\n\n";
+      }
 
-    users.forEach((u) => {
-      msg += `@${u.userId.split("@")[0]} → ₹${u.fine}\n`;
-    });
-
-    // =============================
-    // 🔄 RESET
-    // =============================
-    for (let u of users) {
-      u.completed = false;
-      await u.save();
-    }
-
-    // =============================
-    // 📩 SEND
-    // =============================
-    await safeSend(sock, TARGET_GROUP, {
-      text: msg,
-      mentions: users.map((u) => u.userId),
-    });
-  });
-
-  // =============================
-  // 🧠 DAILY QUESTION (8 AM IST)
-  // =============================
-  cron.schedule(TEST_MODE ? "*/1 * * * *" : "30 2 * * *", async () => {
-    console.log("📢 Daily Question...");
-
-    const count = await Question.countDocuments();
-
-    if (count === 0) {
-      return safeSend(sock, TARGET_GROUP, {
-        text: "🎉 All questions finished!",
+      msg += "💰 Total Fines\n\n";
+      users.forEach((u) => {
+        msg += `👉 @${u.userId.split("@")[0]} → ₹${u.fine}\n`;
       });
-    }
 
-    const random = Math.floor(Math.random() * count);
-    const question = await Question.findOne().skip(random);
+      for (let u of users) {
+        u.completed = false;
+        await u.save();
+      }
 
-    if (!question) return;
-
-    // ❌ delete after selecting
-    await Question.findByIdAndDelete(question._id);
-
-    const msg =
-      `🧠 *Daily Speaking Question*\n\n` +
-      `💬 "${question.quote}"\n\n` +
-      `👉 ${question.question}`;
-
-    // ✅ send to group
-    await safeSend(sock, TARGET_GROUP, { text: msg });
-
-    // 🔥 IF THIS WAS LAST QUESTION
-    if (count === 1) {
-      await safeSend(sock, process.env.OWNER_NUMBER, {
-        text: "⚠️ Only 1 question was left. Now all questions are finished!",
+      await safeSend(sock, TARGET_GROUP, {
+        text: msg,
+        mentions: users.map((u) => u.userId),
       });
-    }
-  });
+    },
+    { timezone: TIMEZONE },
+  );
 
   // =============================
-  // 🔗 CONNECTION
+  // 🧠 DAILY QUESTION (8 AM)
   // =============================
-  sock.ev.on("connection.update", ({ connection }) => {
-    if (connection === "open") {
-      console.log("✅ Connected (Stable)");
-      setTimeout(() => loadGroup(sock), 3000);
-    }
+  cron.schedule(
+    TEST_MODE ? "*/1 * * * *" : "0 8 * * *",
+    async () => {
+      const count = await Question.countDocuments();
+      if (!count) return;
 
-    if (connection === "close") {
-      console.log("⚠️ Reconnecting...");
-      startBot();
-    }
-  });
+      const random = Math.floor(Math.random() * count);
+      const q = await Question.findOne().skip(random);
+      await Question.findByIdAndDelete(q._id);
 
-  if (sock.authState?.creds?.me?.id) {
-    console.log("🔐 Session restored");
-  }
+      await safeSend(sock, TARGET_GROUP, {
+        text: "🧠 Daily Question\n\n" + `💬 "${q.quote}"\n\n👉 ${q.question}`,
+      });
+    },
+    { timezone: TIMEZONE },
+  );
 
-  sock.ev.on("connection.update", ({ qr }) => {
+  sock.ev.on("connection.update", ({ connection, qr }) => {
     if (qr) qrcode.generate(qr, { small: true });
+    if (connection === "close") startBot();
   });
 }
 
