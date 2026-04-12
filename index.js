@@ -260,7 +260,7 @@ async function startBot() {
   // =============================
   // 🧠 DAILY QUESTION (11 AM IST)
   // =============================
-  cron.schedule(TEST_MODE ? "*/1 * * * *" : "30 5 * * *", async () => {
+  cron.schedule(TEST_MODE ? "*/1 * * * *" : "30 2 * * *", async () => {
     console.log("📢 Daily Question...");
 
     const count = await Question.countDocuments();
