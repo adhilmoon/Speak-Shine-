@@ -8,6 +8,8 @@ import cron from "node-cron";
 import dotenv from "dotenv";
 import { connectDB } from "./db.js";
 import User from "./models/userSchema.js";
+import Question from "./models/questionSchema.js";
+
 
 dotenv.config();
 connectDB();
@@ -239,6 +241,36 @@ async function startBot() {
     });
   });
 
+  cron.schedule(TEST_MODE ? "*/1 * * * *" : "30 5 * * *", async () => {
+    console.log(TEST_MODE ? "🧪 TEST Question..." : "📢 Daily Question...");
+
+    // 🔥 get random question
+    const count = await Question.countDocuments();
+
+    if (count === 0) {
+      return sock.sendMessage(TARGET_GROUP, {
+        text: "🎉 All questions finished!",
+      });
+    }
+
+    const random = Math.floor(Math.random() * count);
+
+    const question = await Question.findOne().skip(random);
+
+    if (!question) return;
+
+    // ❌ DELETE permanently
+    await Question.findByIdAndDelete(question._id);
+
+    // 📩 send
+    const msg =
+      `🧠 *Daily Speaking Question*\n\n` +
+      `💬 "${question.quote}"\n\n` +
+      `👉 ${question.question}`;
+
+    await sock.sendMessage(TARGET_GROUP, { text: msg });
+  });
+
   // 🔗 CONNECTION
   sock.ev.on("connection.update", async ({ connection, qr }) => {
     if (qr) qrcode.generate(qr, { small: true });
@@ -255,3 +287,36 @@ async function startBot() {
 }
 
 startBot();
+
+// await Question.insertMany([
+//   {
+//     quote: "Life is really simple, but we insist on making it complicated.",
+//     question: "What does this quote mean to you?"
+//   },
+//   {
+//     quote: "Success is not final, failure is not fatal.",
+//     question: "How do you handle success and failure?"
+//   },
+//   {
+//     quote: "The only way to do great work is to love what you do.",
+//     question: "Is passion important for success?"
+//   },
+//   {
+//     quote: "Do what you can, with what you have, where you are.",
+//     question: "How can we use our current situation effectively?"
+//   },
+//   {
+//     quote: "Happiness depends upon ourselves.",
+//     question: "What makes you happy?"
+//   },
+//   {
+//     quote: "Don’t watch the clock; do what it does. Keep going.",
+//     question: "How do you stay motivated?"
+//   },
+//   {
+//     quote: "In the middle of difficulty lies opportunity.",
+//     question: "Have you turned a problem into an opportunity?"
+//   }
+// ]);
+const questions = await Question.find();
+console.log("✅ Questions seeded!", questions);
