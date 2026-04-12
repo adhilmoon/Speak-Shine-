@@ -1,7 +1,6 @@
 import makeWASocket, {
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
-  DisconnectReason,
 } from "@whiskeysockets/baileys";
 import qrcode from "qrcode-terminal";
 import cron from "node-cron";
@@ -9,7 +8,6 @@ import dotenv from "dotenv";
 import { connectDB } from "./db.js";
 import User from "./models/userSchema.js";
 import Question from "./models/questionSchema.js";
-
 
 dotenv.config();
 connectDB();
@@ -25,7 +23,6 @@ async function loadGroup(sock) {
 
     for (let p of meta.participants) {
       if (p.id === myId) continue;
-
       await User.findOneAndUpdate({ userId: p.id }, {}, { upsert: true });
     }
 
@@ -52,7 +49,7 @@ async function startBot() {
   sock.ev.on("messages.upsert", async ({ messages }) => {
     const msg = messages[0];
     if (!msg.message) return;
-    if (msg.key.fromMe) return; // ❌ avoid self reply
+    if (msg.key.fromMe) return;
 
     const chatId = msg.key.remoteJid;
     if (chatId !== TARGET_GROUP) return;
@@ -67,20 +64,34 @@ async function startBot() {
 
     if (!content) return;
 
-    const text = content?.conversation || content?.extendedTextMessage?.text;
+    // ✅ FIXED TEXT PARSER
+    const text =
+      content?.conversation ||
+      content?.extendedTextMessage?.text ||
+      content?.imageMessage?.caption ||
+      "";
 
-    // 🔥 LOAD GROUP META ONCE
+    console.log("📩 TEXT:", text);
+
+    // 🔥 GROUP META
     const groupMeta = await sock.groupMetadata(TARGET_GROUP);
     const isAdmin = groupMeta.participants.find(
-      (p) => p.id === user && p.admin,
+      (p) => p.id === user && p.admin
     );
 
     // =============================
-    // 🧠 COMMANDS (FIRST)
+    // 🧠 COMMANDS
     // =============================
 
-    if (text === "/fine") {
+    // ✅ /fine
+    if (text?.trim() === "/fine") {
       const users = await User.find();
+
+      if (users.length === 0) {
+        return sock.sendMessage(chatId, {
+          text: "⚠️ No users found!",
+        });
+      }
 
       let msgText = "💰 *Fine Report:*\n\n";
 
@@ -94,7 +105,8 @@ async function startBot() {
       });
     }
 
-    if (text === "/reset") {
+    // ✅ /reset
+    if (text?.trim() === "/reset") {
       if (!isAdmin) {
         return sock.sendMessage(chatId, {
           text: "❌ Only admin can reset",
@@ -108,7 +120,8 @@ async function startBot() {
       });
     }
 
-    if (text === "/resetday") {
+    // ✅ /resetday
+    if (text?.trim() === "/resetday") {
       if (!isAdmin) {
         return sock.sendMessage(chatId, {
           text: "❌ Only admin can reset day",
@@ -122,7 +135,8 @@ async function startBot() {
       });
     }
 
-    if (text === "/resetweek") {
+    // ✅ /resetweek
+    if (text?.trim() === "/resetweek") {
       if (!isAdmin) {
         return sock.sendMessage(chatId, {
           text: "❌ Only admin can reset week",
@@ -137,7 +151,7 @@ async function startBot() {
     }
 
     // =============================
-    // 🎥 VIDEO LOGIC (STRICT)
+    // 🎥 VIDEO LOGIC
     // =============================
 
     const video =
@@ -145,9 +159,8 @@ async function startBot() {
       content?.ephemeralMessage?.message?.videoMessage ||
       content?.viewOnceMessage?.message?.videoMessage;
 
-    if (!video) return; // ❌ ignore non-video
+    if (!video) return;
 
-    // ⏱️ duration check
     const duration = video.seconds || 0;
 
     if (duration < 60) {
@@ -157,7 +170,6 @@ async function startBot() {
       });
     }
 
-    // ❌ prevent duplicate
     const existing = await User.findOne({ userId: user });
 
     if (existing?.completed) {
@@ -167,11 +179,10 @@ async function startBot() {
       });
     }
 
-    // ✅ mark completed
     await User.findOneAndUpdate(
       { userId: user },
       { completed: true },
-      { upsert: true },
+      { upsert: true }
     );
 
     await sock.sendMessage(chatId, {
@@ -180,18 +191,14 @@ async function startBot() {
     });
   });
 
-  // ⏰ REMINDER (IST)
+  // ⏰ REMINDER
   cron.schedule(TEST_MODE ? "*/2 * * * *" : "30 3,7,11,15 * * *", async () => {
-    console.log(TEST_MODE ? "🧪 TEST Reminder..." : "⏰ Reminder...");
-
     const users = await User.find();
     const notDone = users.filter((u) => !u.completed);
 
     if (notDone.length === 0) return;
 
-    let msg = TEST_MODE
-      ? "🧪 TEST Reminder\n\n"
-      : "⏰ *Reminder! Submit your video 🎥*\n\n";
+    let msg = "⏰ *Reminder! Submit your video 🎥*\n\n";
 
     notDone.forEach((u) => {
       msg += `@${u.userId.split("@")[0]}\n`;
@@ -203,25 +210,21 @@ async function startBot() {
     });
   });
 
-  // 🚨 FINAL REPORT (12PM IST)
+  // 🚨 FINAL REPORT
   cron.schedule(TEST_MODE ? "*/3 * * * *" : "30 6 * * *", async () => {
-    console.log(TEST_MODE ? "🧪 TEST Final..." : "📊 Final report...");
-
     const users = await User.find();
     const notDone = users.filter((u) => !u.completed);
 
     let msg = "";
 
     if (notDone.length === 0) {
-      msg = TEST_MODE
-        ? "🧪 TEST: Everyone completed!"
-        : "🎉 Everyone completed today's task!";
+      msg = "🎉 Everyone completed today's task!";
     } else {
-      msg = TEST_MODE ? "🧪 TEST Final:\n\n" : "❌ *Final Report:*\n\n";
+      msg = "❌ *Final Report:*\n\n";
 
       for (let u of notDone) {
         if (!TEST_MODE) {
-          u.fine += 2; // ❗ no fine in test mode
+          u.fine += 2;
           await u.save();
         }
 
@@ -229,7 +232,6 @@ async function startBot() {
       }
     }
 
-    // reset attendance
     for (let u of users) {
       u.completed = false;
       await u.save();
@@ -241,10 +243,10 @@ async function startBot() {
     });
   });
 
+  // 🧠 DAILY QUESTION (11 AM IST)
   cron.schedule(TEST_MODE ? "*/1 * * * *" : "30 5 * * *", async () => {
-    console.log(TEST_MODE ? "🧪 TEST Question..." : "📢 Daily Question...");
+    console.log("📢 Daily Question...");
 
-    // 🔥 get random question
     const count = await Question.countDocuments();
 
     if (count === 0) {
@@ -254,7 +256,6 @@ async function startBot() {
     }
 
     const random = Math.floor(Math.random() * count);
-
     const question = await Question.findOne().skip(random);
 
     if (!question) return;
@@ -262,7 +263,6 @@ async function startBot() {
     // ❌ DELETE permanently
     await Question.findByIdAndDelete(question._id);
 
-    // 📩 send
     const msg =
       `🧠 *Daily Speaking Question*\n\n` +
       `💬 "${question.quote}"\n\n` +
@@ -287,36 +287,3 @@ async function startBot() {
 }
 
 startBot();
-
-// await Question.insertMany([
-//   {
-//     quote: "Life is really simple, but we insist on making it complicated.",
-//     question: "What does this quote mean to you?"
-//   },
-//   {
-//     quote: "Success is not final, failure is not fatal.",
-//     question: "How do you handle success and failure?"
-//   },
-//   {
-//     quote: "The only way to do great work is to love what you do.",
-//     question: "Is passion important for success?"
-//   },
-//   {
-//     quote: "Do what you can, with what you have, where you are.",
-//     question: "How can we use our current situation effectively?"
-//   },
-//   {
-//     quote: "Happiness depends upon ourselves.",
-//     question: "What makes you happy?"
-//   },
-//   {
-//     quote: "Don’t watch the clock; do what it does. Keep going.",
-//     question: "How do you stay motivated?"
-//   },
-//   {
-//     quote: "In the middle of difficulty lies opportunity.",
-//     question: "Have you turned a problem into an opportunity?"
-//   }
-// ]);
-const questions = await Question.find();
-console.log("✅ Questions seeded!", questions);
