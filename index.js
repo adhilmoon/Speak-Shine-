@@ -233,14 +233,18 @@ async function startBot() {
 
   // 🔁 RECOVERY (FULL WINDOW)
   cron.schedule("*/2 * * * *", async () => {
-    const now = new Date();
+    const now = new Date(
+      new Date().toLocaleString("en-US", { timeZone: TIMEZONE }),
+    );
+
+    console.log("⏰ IST Time:", now.getHours(), now.getMinutes());
 
     if (now.getHours() === 10 && now.getMinutes() <= 59) {
       console.log("⚡ Recovery check...");
       await sendQuestion();
     }
     console.log("Flag:", questionSentToday);
-    console.log("⏰ Current time:", now.toLocaleTimeString("en-US", { timeZone: TIMEZONE }));
+    console.log(now);
   });
 
   // =============================
