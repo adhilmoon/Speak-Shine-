@@ -149,6 +149,8 @@ async function startBot() {
       const users = await User.find();
       const pending = users.filter((u) => !u.completed);
 
+      console.log(`⏰ Final Warning - Pending: ${pending.length}`);
+
       if (!pending.length) return;
 
       const filePath = "./warning.mp3";
@@ -344,6 +346,10 @@ async function startBot() {
   cron.schedule("0 9,13,17 * * *", () => sendReminder("⏰ Reminder"), {
     timezone: TIMEZONE,
   });
+//testing
+    cron.schedule("10 16 * * *", () => sendReminder("⏰ Reminder"), {
+    timezone: TIMEZONE,
+  });
 
   cron.schedule("0 21,22 * * *", () => sendReminder("🌙 Night Reminder"), {
     timezone: TIMEZONE,
@@ -351,12 +357,12 @@ async function startBot() {
 
   cron.schedule("0 23 * * *", sendDMReminder, { timezone: TIMEZONE });
 
-  cron.schedule("58 15 * * *", finalWarning, { timezone: TIMEZONE });
+  cron.schedule("10 16 * * *", finalWarning, { timezone: TIMEZONE });
 
   cron.schedule("0 0 * * *", dailyReport, { timezone: TIMEZONE });
 
   cron.schedule(
-    "0 13 18 20 * * *",
+    "0 13,18,20 * * *",
     async () => {
       const count = await Question.countDocuments();
 
