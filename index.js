@@ -33,7 +33,8 @@ const convertToOgg = (input, output) => {
   });
 };
 
-// ================= SAFE SEND =================
+// ================= HELPERS =================
+const getName = (userId) => (userId ? userId.split("@")[0] : "unknown");
 const safeSend = async (sock, jid, msg) => {
   try {
     if (!sock?.user) return false;
@@ -175,8 +176,9 @@ async function startBot() {
 
       if (!pending.length) return;
 
-      const mp3Path = "./warning.mp3";
-      const oggPath = "./warning.ogg";
+      const id = Date.now();
+      const mp3 = `./warning-${id}.mp3`;
+      const ogg = `./warning-${id}.ogg`;
 
       // 🎤 Generate MP3 (ONLY ONCE ✅)
       await generateVoice(
@@ -227,29 +229,49 @@ async function startBot() {
   // ================= DAILY REPORT =================
   const dailyReport = async () => {
     try {
-      const users = await User.find();
+      const users = await User.find({ userId: { $ne: null } });
       const completed = users.filter((u) => u.completed);
       const pending = users.filter((u) => !u.completed);
 
+      // Apply ₹2 fine to pending users
+      if (pending.length) {
+        await User.updateMany(
+          { userId: { $in: pending.map((u) => u.userId) } },
+          { $inc: { fine: 2 } },
+        );
+      }
+
       let msg = `╔══════════════════╗\n📊  *DAILY REPORT*\n╚══════════════════╝\n\n`;
-      msg += `✅ *Completed:* ${completed.length}\n`;
-      msg += `❌ *Pending:* ${pending.length}\n`;
+      msg += `✅ *Submitted:* ${completed.length}\n`;
+      msg += `❌ *Missed:* ${pending.length}\n`;
       msg += `━━━━━━━━━━━━━━━\n`;
 
-      if (pending.length) {
-        msg += `\n⚠️ *Still pending:*\n`;
-        pending.forEach((u) => {
-          msg += `▪️ @${getName(u.userId)}\n`;
+      if (completed.length) {
+        msg += `\n🏅 *Today's Submissions:*\n`;
+        completed.forEach((u) => {
+          msg += `✅ @${getName(u.userId)}\n`;
         });
-      } else {
+      }
+
+      if (pending.length) {
+        msg += `\n⚠️ *Missed & Fined ₹2:*\n`;
+        pending.forEach((u) => {
+          msg += `❌ @${getName(u.userId)} _(Total fine: ₹${(u.fine || 0) + 2})_\n`;
+        });
+      }
+
+      if (!pending.length) {
         msg += `\n🎉 _Everyone submitted today — great work!_ 🙌\n`;
       }
 
+      const allMentions = users.map((u) => u.userId).filter(Boolean);
+
       await safeSend(sock, TARGET_GROUP, {
         text: msg,
-        mentions: pending.map((u) => u.userId),
+        mentions: allMentions,
       });
 
+      // Reset daily status
       await User.updateMany({}, { completed: false });
 
       const status = await Status.findOne();
@@ -265,7 +287,6 @@ async function startBot() {
 
   // ================= MESSAGE HANDLER =================
   const processedMsgIds = new Set();
-  const getName = (userId) => (userId ? userId.split("@")[0] : "unknown");
 
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     try {
@@ -455,8 +476,14 @@ async function startBot() {
   sock.ev.on("connection.update", ({ connection, qr }) => {
     if (qr) qrcode.generate(qr, { small: true });
 
-    if (connection === "open") console.log("✅ Connected");
-    if (connection === "close") startBot();
+    if (connection === "open") {
+      console.log("✅ Connected");
+    }
+
+    if (connection === "close") {
+      console.log("⚠️ Reconnecting...");
+      setTimeout(startBot, 3000);
+    }
   });
 }
 
