@@ -260,6 +260,8 @@ async function startBot() {
   // =============================
   sock.ev.on("connection.update", ({ connection, qr }) => {
     if (qr) qrcode.generate(qr, { small: true });
+    const que = await Question.countDocuments();
+    console.log(`📊 Questions in DB: ${que}`);
 
     if (connection === "open") {
       console.log("✅ Bot connected");
