@@ -130,7 +130,7 @@ async function startBot() {
       let msg = `${title}\n━━━━━━━━━━━━━━━\n\n`;
       msg += `📌 *${pending.length} member(s) yet to submit:*\n\n`;
       pending.forEach((u) => {
-        msg += `▪️ @${u.userId.split("@")[0]}\n`;
+        msg += `▪️ @${getName(u.userId)}\n`;
       });
       msg += `\n📹 _Send your 1-min+ speaking video now!_`;
 
@@ -198,7 +198,7 @@ async function startBot() {
 
       // 📤 Send text + voice
       await safeSend(sock, TARGET_GROUP, {
-        text: `🚨 *FINAL WARNING!*\n\n━━━━━━━━━━━━━━━\n⏳ Deadline is almost here!\n\n${pending.map((u) => `▪️ @${u.userId.split("@")[0]}`).join("\n")}\n\n📹 _Submit your speaking video RIGHT NOW or a fine will be applied!_ 💸`,
+        text: `🚨 *FINAL WARNING!*\n\n━━━━━━━━━━━━━━━\n⏳ Deadline is almost here!\n\n${pending.map((u) => `▪️ @${getName(u.userId)}`).join("\n")}\n\n📹 _Submit your speaking video RIGHT NOW or a fine will be applied!_ 💸`,
         mentions: pending.map((u) => u.userId),
       });
 
@@ -233,7 +233,7 @@ async function startBot() {
       if (pending.length) {
         msg += `\n⚠️ *Still pending:*\n`;
         pending.forEach((u) => {
-          msg += `▪️ @${u.userId.split("@")[0]}\n`;
+          msg += `▪️ @${getName(u.userId)}\n`;
         });
       } else {
         msg += `\n🎉 _Everyone submitted today — great work!_ 🙌\n`;
@@ -259,6 +259,7 @@ async function startBot() {
 
   // ================= MESSAGE HANDLER =================
   const processedMsgIds = new Set();
+  const getName = (userId) => (userId ? userId.split("@")[0] : "unknown");
 
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     try {
@@ -277,6 +278,7 @@ async function startBot() {
       if (chatId !== TARGET_GROUP) return;
 
       const user = msg.key.participant;
+      if (!user) return;
 
       const text =
         msg.message?.conversation ||
@@ -301,7 +303,7 @@ async function startBot() {
         const users = await User.find();
         let msgText = `╔══════════════════╗\n💰  *FINE REPORT*\n╚══════════════════╝\n\n`;
         users.forEach((u) => {
-          msgText += `▪️ @${u.userId.split("@")[0]} → ₹${u.fine || 0}\n`;
+          msgText += `▪️ @${getName(u.userId)} → ₹${u.fine || 0}\n`;
         });
         msgText += `\n━━━━━━━━━━━━━━━\n💡 _Fines are applied for missed submissions._`;
 
@@ -317,10 +319,11 @@ async function startBot() {
         let msgText = `╔══════════════════╗\n🏆  *LEADERBOARD*\n╚══════════════════╝\n\n`;
 
         users
+          .filter((u) => u.userId)
           .sort((a, b) => b.completed - a.completed)
           .forEach((u, i) => {
             const medal = ["🥇", "🥈", "🥉"][i] || "🔹";
-            msgText += `${medal} @${u.userId.split("@")[0]} → ${u.completed ? "✅ Done" : "❌ Pending"}\n`;
+            msgText += `${medal} @${getName(u.userId)} → ${u.completed ? "✅ Done" : "❌ Pending"}\n`;
           });
         msgText += `\n━━━━━━━━━━━━━━━\n🔥 _Keep grinding — consistency wins!_`;
 
