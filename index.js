@@ -14,8 +14,10 @@ connectDB();
 
 const TARGET_GROUP = process.env.TARGET_GROUP;
 const TIMEZONE = "Asia/Kolkata";
+const OWNER = process.env.OWNER_NUMBER;
 
 let questionSentToday = false;
+let notifiedEmpty = false;
 
 // =============================
 // ✅ SAFE SEND (RELIABLE)
@@ -205,13 +207,28 @@ async function startBot() {
       console.log("🔥 Sending Question...");
 
       const count = await Question.countDocuments();
-      if (!count) return;
+
+      // ❌ No questions left
+      if (count === 0 && !notifiedEmpty) {
+        await safeSend(sock, OWNER, { text: "🚨 No questions left!" });
+        notifiedEmpty = true;
+      }
+
+      // ⚠️ Last question warning
+      if (count === 1 && !notifiedEmpty) {
+        console.log("⚠️ Last question remaining");
+
+        await safeSend(sock, OWNER, {
+          text: "⚠️ Only 1 question left in DB!",
+        });
+        notifiedEmpty = true;
+      }
 
       const randomIndex = Math.floor(Math.random() * count);
       const q = await Question.findOne().skip(randomIndex);
       if (!q) return;
 
-      // ✅ SEND FIRST
+      // ✅ SEND TO GROUP
       const sent = await safeSend(sock, TARGET_GROUP, {
         text: `🧠 Daily Question\n\n💬 "${q.quote}"\n\n👉 ${q.question}`,
       });
