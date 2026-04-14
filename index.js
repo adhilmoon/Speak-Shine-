@@ -514,9 +514,9 @@ async function startBot() {
       const now = new Date();
       const minutes = now.getMinutes();
 
-      if (minutes > 16) return; // stop after 8:16
+      if (minutes > 30) return; // stop after 8:16
 
-      console.log(`📢 Sending question at 8:${minutes}`);
+      console.log(`📢 Sending question at 9:${minutes}`);
 
       await sendQuestion();
     },
