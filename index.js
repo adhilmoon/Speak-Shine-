@@ -247,7 +247,13 @@ async function startBot() {
   // ================= DAILY REPORT =================
   const dailyReport = async () => {
     try {
-      const users = await User.find();
+      const groupMeta = await sock.groupMetadata(TARGET_GROUP);
+      const groupUsers = groupMeta.participants.map((p) => p.id);
+
+      const users = await User.find({
+        userId: { $in: groupUsers },
+      });
+
       const completed = users.filter((u) => u.completed);
       const pending = users.filter((u) => !u.completed);
       const status = await Status.findOne();
@@ -278,7 +284,7 @@ async function startBot() {
       if (pending.length) {
         msg += `\n⚠️ *Missed & Fined ₹2:*\n`;
         pending.forEach((u) => {
-          msg += `❌ @${getName(u.userId)} _(Total fine: ₹${(u.fine || 0) + 2})_\n`;
+          msg += `❌ @${getName(u.userId)} _(Total fine: ₹${u.fine || 0})_\n`;
         });
       }
 
@@ -399,37 +405,37 @@ async function startBot() {
       }
 
       if (cmd.startsWith("/addfine")) {
-        // 🔒 Admin check
         if (!isAdmin) {
           return safeSend(sock, chatId, {
             text: "❌ Only admins can use this command",
           });
         }
 
-        // 📌 Get mentioned user
         const mentioned =
-          msg.message?.extendedTextMessage?.contextInfo?.mentionedJid;
+          msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
 
-        if (!mentioned || !mentioned.length) {
-          return safeSend(sock, chatId, {
-            text: "❌ Tag a user\nExample: /addfine @user 5",
-          });
+        const parts = text.trim().split(" ");
+
+        let targetUser;
+        let amount = 2;
+
+        // If mention exists
+        if (mentioned.length > 0) {
+          targetUser = mentioned[0];
+          amount = parseInt(parts[2]) || 2;
+        }
+        // No mention = self
+        else {
+          targetUser = user;
+          amount = parseInt(parts[1]) || 2;
         }
 
-        const targetUser = mentioned[0];
-
-        // 💰 Get amount (optional)
-        const parts = text.split(" ");
-        const amount = parseInt(parts[2]) || 2;
-
-        // 🧠 Update DB
         await User.findOneAndUpdate(
           { userId: targetUser },
           { $inc: { fine: amount } },
           { upsert: true },
         );
 
-        // ✅ Response
         return safeSend(sock, chatId, {
           text: `💸 ₹${amount} fine added to @${targetUser.split("@")[0]}`,
           mentions: [targetUser],
