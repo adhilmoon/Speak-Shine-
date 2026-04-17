@@ -612,7 +612,7 @@ async function startBot() {
     { timezone: TIMEZONE },
   );
 
-  cron.schedule("* * * * *", sendQuestion, { timezone: TIMEZONE });
+  //cron.schedule("* * * * *", sendQuestion, { timezone: TIMEZONE });
 
   // ================= CONNECTION =================
   sock.ev.on("connection.update", ({ connection, qr }) => {
