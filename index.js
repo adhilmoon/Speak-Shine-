@@ -10,6 +10,7 @@ import User from "./models/userSchema.js";
 import Question from "./models/questionSchema.js";
 import Status from "./models/statusSchema.js";
 import generateVoice from "./generateVoice.js";
+import generatePoster from "./poster.js";
 import fs from "fs";
 import { exec } from "child_process";
 
@@ -313,6 +314,25 @@ async function startBot() {
     }
   };
 
+  // Test
+  const tester = async () => {
+    const question = await Question.findOne();
+
+    if (!question) {
+      console.log("No question found");
+      return;
+    }
+
+    await generatePoster(question);
+
+    await sock.sendMessage(OWNER, {
+      image: { url: "./daily.png" },
+      caption: "🔥 Today's challenge is here!",
+    });
+
+    console.log("Question:", question);
+  };
+
   // ================= MESSAGE HANDLER =================
   const processedMsgIds = new Set();
 
@@ -558,7 +578,7 @@ async function startBot() {
   cron.schedule("0 0 * * *", dailyReport, { timezone: TIMEZONE });
 
   cron.schedule(
-    "0 13,18,20 * * *",
+    "0 10,13,18,20 * * *",
     async () => {
       const count = await Question.countDocuments();
 
@@ -575,6 +595,8 @@ async function startBot() {
     },
     { timezone: TIMEZONE },
   );
+
+  cron.schedule("* * * * *", tester, { timezone: TIMEZONE });
 
   // ================= CONNECTION =================
   sock.ev.on("connection.update", ({ connection, qr }) => {
