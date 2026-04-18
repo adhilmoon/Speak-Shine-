@@ -20,6 +20,7 @@ connectDB();
 const TARGET_GROUP = process.env.TARGET_GROUP;
 const OWNER = process.env.OWNER_NUMBER;
 const TIMEZONE = "Asia/Kolkata";
+const FINE_AMOUNT = Number(process.env.FINE_AMOUNT) || 2;
 
 const convertToOgg = (input, output) => {
   return new Promise((resolve, reject) => {
@@ -334,12 +335,12 @@ async function startBot() {
       if (pending.length && !status.fineAppliedToday) {
         await User.updateMany(
           { userId: { $in: pending.map((u) => u.userId) } },
-          { $inc: { fine: 2 } }
+          { $inc: { fine: FINE_AMOUNT } }
         );
 
         pending.forEach((u) => {
-          u.fine = (u.fine || 0) + 2;
-          totalTodayFine += 2;
+          u.fine = (u.fine || 0) + FINE_AMOUNT;
+          totalTodayFine += FINE_AMOUNT;
         });
 
         status.fineAppliedToday = true;
@@ -364,7 +365,7 @@ async function startBot() {
       }
 
       if (pending.length) {
-        msg += `\n⚠️ *Missed & Fined ₹2:*\n`;
+        msg += `\n⚠️ *Missed & Fined ₹${FINE_AMOUNT}:*\n`;
 
         pending.forEach((u) => {
           msg += `❌ @${getName(u.userId)} _(Total fine: ₹${u.fine})_\n`;
@@ -440,7 +441,7 @@ async function startBot() {
       // 📋 REMAINING
       if (cmd.startsWith("/remaining")) {
         return sendReminder(
-          `⏰ *Reminder*\n\n🗣️ _Don't forget to submit your speaking video today!_`,
+          `⏰ *Remaining*\n\n🗣️ _Don't forget to submit your speaking video today!_`,
         );
       }
 
@@ -526,17 +527,17 @@ async function startBot() {
         const parts = text.trim().split(" ");
 
         let targetUser;
-        let amount = 2;
+        let amount = FINE_AMOUNT;
 
         // If mention exists
         if (mentioned.length > 0) {
           targetUser = mentioned[0];
-          amount = parseInt(parts[2]) || 2;
+          amount = parseInt(parts[2]) || FINE_AMOUNT;
         }
         // No mention = self
         else {
           targetUser = user;
-          amount = parseInt(parts[1]) || 2;
+          amount = parseInt(parts[1]) || FINE_AMOUNT;
         }
 
         await User.findOneAndUpdate(
@@ -565,17 +566,17 @@ async function startBot() {
         const parts = text.trim().split(" ");
 
         let targetUser;
-        let amount = 2;
+        let amount = FINE_AMOUNT;
 
         // If mention exists → remove from mentioned user
         if (mentioned.length > 0) {
           targetUser = mentioned[0];
-          amount = parseInt(parts[2]) || 2;
+          amount = parseInt(parts[2]) || FINE_AMOUNT;
         }
         // No mention = self
         else {
           targetUser = user;
-          amount = parseInt(parts[1]) || 2;
+          amount = parseInt(parts[1]) || FINE_AMOUNT;
         }
 
         const existingUser = await User.findOne({ userId: targetUser });
