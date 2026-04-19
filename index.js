@@ -1,7 +1,9 @@
 import makeWASocket, {
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
+  DisconnectReason,
 } from "@whiskeysockets/baileys";
+import { Boom } from "@hapi/boom";
 import qrcode from "qrcode-terminal";
 import cron from "node-cron";
 import dotenv from "dotenv";
@@ -12,6 +14,7 @@ import Status from "./models/statusSchema.js";
 import generateVoice from "./generateVoice.js";
 import generatePoster from "./poster.js";
 import { resetStatus } from "./resetStatus.js";
+import { generateFeedback } from "./ai/feedback.js";
 import fs from "fs";
 import { exec } from "child_process";
 
@@ -413,14 +416,38 @@ async function startBot() {
       if (!messages || !messages.length) return;
 
       const msg = messages[0];
-      if (!msg || !msg.message || msg.key.fromMe) return;
+      if (!msg || !msg.message) return;
+
+      const chatId = msg.key.remoteJid;
+      const dmVideo =
+        msg.message?.videoMessage ||
+        msg.message?.ephemeralMessage?.message?.videoMessage;
+
+      // Match owner by phone number since WhatsApp may use @lid format
+      const ownerNumber = OWNER.replace("@s.whatsapp.net", "").replace("@lid", "");
+      const isOwnerDM = chatId === OWNER ||
+        chatId.includes(ownerNumber) ||
+        (msg.key.fromMe && dmVideo && !chatId.includes("@g.us"));
+
+      // Block fromMe except owner sending video to bot DM for testing
+      if (msg.key.fromMe && !(isOwnerDM && dmVideo)) return;
 
       const msgId = msg.key.id;
       if (processedMsgIds.has(msgId)) return;
       processedMsgIds.add(msgId);
       setTimeout(() => processedMsgIds.delete(msgId), 60000);
+      if (isOwnerDM && dmVideo) {
+        generateFeedback(msg, OWNER, dmVideo.seconds || 60)
+          .then((feedbackText) => {
+            safeSend(sock, OWNER, { text: feedbackText });
+          })
+          .catch((err) => {
+            console.log("❌ Owner test feedback error:", err);
+            safeSend(sock, OWNER, { text: `❌ Feedback failed: ${err.message}` });
+          });
+        return;
+      }
 
-      const chatId = msg.key.remoteJid;
       if (chatId !== TARGET_GROUP) return;
 
       const user = msg.key.participant;
@@ -649,6 +676,18 @@ async function startBot() {
         text: `🔥 *Great work, @${username}!*\n\n✅ Submission received!\n\n💪 _Keep showing up every day — consistency is what separates the best from the rest. You're on the right track!_ 🚀`,
         mentions: [user],
       });
+
+      await safeSend(sock, chatId, {
+        text: `🤖 ⏳ _Analyzing your video... feedback coming shortly!_`,
+        mentions: [user],
+      });
+
+      // 🤖 AI Feedback (runs async, won't block submission)
+      generateFeedback(msg, user, video.seconds || 60)
+        .then((feedbackText) => {
+          safeSend(sock, chatId, { text: feedbackText, mentions: [user] });
+        })
+        .catch((err) => console.log("❌ Feedback error:", err));
     } catch (err) {
       console.log("❌ Message error:", err);
     }
@@ -743,7 +782,7 @@ async function startBot() {
   }
 
   // ================= CONNECTION =================
-  sock.ev.on("connection.update", ({ connection, qr }) => {
+  sock.ev.on("connection.update", ({ connection, qr, lastDisconnect }) => {
     if (qr) qrcode.generate(qr, { small: true });
 
     if (connection === "open") {
@@ -751,8 +790,25 @@ async function startBot() {
     }
 
     if (connection === "close") {
-      console.log("⚠️ Reconnecting...");
-      setTimeout(startBot, 3000);
+      const code = new Boom(lastDisconnect?.error)?.output?.statusCode;
+      const reason = lastDisconnect?.error?.message || "";
+
+      if (code === DisconnectReason.loggedOut) {
+        console.log("❌ Logged out. Delete auth folder and restart.");
+        return;
+      }
+
+      if (
+        code === DisconnectReason.connectionReplaced ||
+        reason.includes("conflict") ||
+        reason.includes("replaced")
+      ) {
+        console.log("⚠️ Conflict: another instance took over. Stopping this one.");
+        process.exit(0);
+      }
+
+      console.log(`⚠️ Disconnected (code: ${code}), reconnecting in 5s...`);
+      setTimeout(startBot, 5000);
     }
   });
 }
