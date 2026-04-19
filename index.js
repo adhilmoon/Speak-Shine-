@@ -311,8 +311,16 @@ async function startBot() {
   // ================= DAILY REPORT =================
   const dailyReport = async () => {
     try {
-      const groupMeta = await sock.groupMetadata(TARGET_GROUP);
-      const groupUsers = groupMeta.participants.map((p) => p.id);
+      // Try to get live group members, fall back to all DB users
+      let groupUsers;
+      try {
+        const groupMeta = await sock.groupMetadata(TARGET_GROUP);
+        groupUsers = groupMeta.participants.map((p) => p.id);
+      } catch {
+        console.log("⚠️ Could not fetch group metadata, using DB users");
+        const allUsers = await User.find({ userId: { $ne: null } });
+        groupUsers = allUsers.map((u) => u.userId);
+      }
 
       let status = await Status.findOne();
       if (!status) status = await Status.create({});
@@ -390,6 +398,7 @@ async function startBot() {
       // Reset daily flags
       status.questionSentToday = false;
       status.notifiedEmpty = false;
+      status.notifiedLast = false;
       status.fineAppliedToday = false;
       await status.save();
 
@@ -613,6 +622,22 @@ async function startBot() {
 
         return safeSend(sock, chatId, {
           text: "🧹 Invalid users cleaned!",
+        });
+      }
+
+      // 🔄 RESET STATUS
+      if (cmd.startsWith("/resetstatus")) {
+        if (!isAdmin) return safeSend(sock, chatId, { text: `❌ *Access Denied*\n_Only admins can use this command._` });
+
+        await Status.updateOne({}, {
+          questionSentToday: false,
+          notifiedEmpty: false,
+          notifiedLast: false,
+          fineAppliedToday: false,
+        });
+
+        return safeSend(sock, chatId, {
+          text: `🔄 *Status Reset Done!*\n\n━━━━━━━━━━━━━━━\n✅ All daily flags have been cleared.`,
         });
       }
 
