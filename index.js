@@ -433,8 +433,22 @@ async function startBot() {
         chatId.includes(ownerNumber) ||
         (msg.key.fromMe && dmVideo && !chatId.includes("@g.us"));
 
-      // Block fromMe except owner sending video to bot DM for testing
-      if (msg.key.fromMe && !(isOwnerDM && dmVideo)) return;
+      // Get message text early
+      const text =
+        msg.message?.conversation ||
+        msg.message?.extendedTextMessage?.text ||
+        "";
+      
+      const isCommand = text.trim().startsWith("/");
+      const isGroupMessage = chatId.includes("@g.us");
+
+      // Block fromMe except: owner DM videos, commands in group, or text messages in target group
+      if (msg.key.fromMe && 
+          !(isOwnerDM && dmVideo) && 
+          !(isGroupMessage && isCommand) &&
+          !(chatId === TARGET_GROUP && text.trim().length > 0)) {
+        return;
+      }
 
       const msgId = msg.key.id;
       if (processedMsgIds.has(msgId)) return;
@@ -454,13 +468,8 @@ async function startBot() {
 
       if (chatId !== TARGET_GROUP) return;
 
-      const user = msg.key.participant;
+      const user = msg.key.participant || msg.key.remoteJid;
       if (!user) return;
-
-      const text =
-        msg.message?.conversation ||
-        msg.message?.extendedTextMessage?.text ||
-        "";
 
       const cmd = text.trim().toLowerCase();
 
