@@ -83,11 +83,16 @@ async function startBot() {
       // ================= NEW USER ADDED =================
       if (data.action === "add") {
         for (const id of data.participants) {
+          // Always store as @s.whatsapp.net — never @lid
+          const normalizedId = id.includes("@lid")
+            ? id.replace("@lid", "@s.whatsapp.net")
+            : id;
+
           await User.updateOne(
-            { userId: id },
+            { userId: normalizedId },
             {
               $setOnInsert: {
-                userId: id,
+                userId: normalizedId,
                 completed: false,
                 fine: 0,
               },
@@ -813,36 +818,46 @@ async function startBot() {
         // Normalize userId to phone number only for comparison
         const getPhone = (id) => id ? id.replace(/@s\.whatsapp\.net|@lid|@c\.us/g, "").split(":")[0] : null;
 
-        // Group records by normalized phone number
-        const phoneMap = new Map();
+        // Step 1: Fix @lid records that have no duplicate — just rename them
+        let migrated = 0;
         for (const u of users) {
+          if (u.userId?.includes("@lid")) {
+            const fixed = u.userId.replace("@lid", "@s.whatsapp.net");
+            // Only rename if no @s.whatsapp.net version already exists
+            const exists = await User.findOne({ userId: fixed });
+            if (!exists) {
+              await User.updateOne({ _id: u._id }, { userId: fixed });
+              migrated++;
+            }
+          }
+        }
+
+        // Step 2: Re-fetch and group by phone number to find true duplicates
+        const fresh = await User.find();
+        const phoneMap = new Map();
+        for (const u of fresh) {
           const phone = getPhone(u.userId);
           if (!phone) { await User.deleteOne({ _id: u._id }); continue; }
-          if (!phoneMap.has(phone)) {
-            phoneMap.set(phone, []);
-          }
+          if (!phoneMap.has(phone)) phoneMap.set(phone, []);
           phoneMap.get(phone).push(u);
         }
 
         let removed = 0;
-        for (const [phone, records] of phoneMap) {
+        for (const [, records] of phoneMap) {
           if (records.length <= 1) continue;
 
-          // Keep the @s.whatsapp.net version preferably, else highest fine
+          // Keep @s.whatsapp.net version, or highest fine
           records.sort((a, b) => {
-            const aPreferred = a.userId?.includes("@s.whatsapp.net") ? 1 : 0;
-            const bPreferred = b.userId?.includes("@s.whatsapp.net") ? 1 : 0;
-            if (aPreferred !== bPreferred) return bPreferred - aPreferred;
+            const aP = a.userId?.includes("@s.whatsapp.net") ? 1 : 0;
+            const bP = b.userId?.includes("@s.whatsapp.net") ? 1 : 0;
+            if (aP !== bP) return bP - aP;
             return (b.fine || 0) - (a.fine || 0);
           });
 
           const keep = records[0];
           const totalFine = records.reduce((sum, r) => sum + (r.fine || 0), 0);
-
-          // Update the keeper with merged fine
           await User.updateOne({ _id: keep._id }, { fine: totalFine });
 
-          // Delete the rest
           for (const dup of records.slice(1)) {
             await User.deleteOne({ _id: dup._id });
             removed++;
@@ -850,7 +865,7 @@ async function startBot() {
         }
 
         return safeSend(sock, chatId, {
-          text: `🧹 *Dedup Complete!*\n\n━━━━━━━━━━━━━━━\n✅ Removed *${removed}* duplicate record(s).\n📦 Unique members: *${phoneMap.size}*`,
+          text: `🧹 *Dedup Complete!*\n\n━━━━━━━━━━━━━━━\n✅ Removed *${removed}* duplicate(s)\n🔄 Migrated *${migrated}* @lid record(s)\n📦 Unique members: *${phoneMap.size}*`,
         });
       }
 
