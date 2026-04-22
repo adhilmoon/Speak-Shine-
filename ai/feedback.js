@@ -3,48 +3,126 @@ import { extractAudio } from "./extractAudio.js";
 import { transcribe } from "./transcribe.js";
 import { analyzeSpeech } from "./analyzeSpeech.js";
 import { analyzeVideo } from "./analyzeVideo.js";
+import {
+  withTimeout,
+  startStage,
+  TRANSCRIBE_TIMEOUT_MS,
+  SPEECH_TIMEOUT_MS,
+  VISUAL_TIMEOUT_MS,
+} from "./pipeline.js";
 import fs from "fs";
 
 /**
  * Generates detailed AI feedback for a spoken English video submission.
  * Runs audio analysis (Groq Whisper + Llama) and visual analysis (Gemini Vision) in parallel.
  *
- * @param {object} msg - WhatsApp message object
- * @param {string} user - User JID (e.g. "919876543210@s.whatsapp.net")
- * @param {number} durationSeconds - Video duration in seconds
- * @param {string|null} questionTopic - Today's speaking topic (optional, for relevance check)
- * @param {string|null} questionText - Full question text (optional)
- * @param {object|null} sock - Baileys socket (for media re-fetch)
+ * @param {object}      msg              - WhatsApp message object
+ * @param {string}      user             - User JID (e.g. "919876543210@s.whatsapp.net")
+ * @param {number}      durationSeconds  - Video duration in seconds
+ * @param {string|null} questionTopic    - Today's speaking topic (optional, for relevance check)
+ * @param {string|null} questionText     - Full question text (optional)
+ * @param {object|null} sock             - Baileys socket (for media re-fetch)
+ * @param {object}      [opts]
+ * @param {Function}    [opts.onProgress]         - async (stage: string) => void
+ * @param {number}      [opts.transcribeTimeout]  - default TRANSCRIBE_TIMEOUT_MS (60 000)
+ * @param {number}      [opts.speechTimeout]      - default SPEECH_TIMEOUT_MS (45 000)
+ * @param {number}      [opts.visualTimeout]      - default VISUAL_TIMEOUT_MS (45 000)
  */
-export async function generateFeedback(msg, user, durationSeconds, questionTopic = null, questionText = null, sock = null) {
+export async function generateFeedback(
+  msg,
+  user,
+  durationSeconds,
+  questionTopic = null,
+  questionText = null,
+  sock = null,
+  opts = {}
+) {
+  const {
+    onProgress = () => {},
+    transcribeTimeout = TRANSCRIBE_TIMEOUT_MS,
+    speechTimeout = SPEECH_TIMEOUT_MS,
+    visualTimeout = VISUAL_TIMEOUT_MS,
+  } = opts;
+
+  const pipelineStart = Date.now();
   const id = Date.now();
   let videoPath, audioPath;
 
   try {
-    // 1. Download video (pass sock for media key re-fetch)
-    videoPath = await downloadVideo(msg, id, sock);
+    // -----------------------------------------------------------------------
+    // Stage 1: Download video
+    // -----------------------------------------------------------------------
+    const downloadStage = startStage("download");
+    try {
+      videoPath = await downloadVideo(msg, id, sock);
+      downloadStage.end();
+    } catch (err) {
+      downloadStage.end(err);
+      throw err;
+    }
 
-    // 2. Extract audio first (fast), then run visual analysis in parallel with transcription
-    audioPath = await extractAudio(videoPath, id);
+    await onProgress("Extracting audio…");
 
-    // 3. Run visual analysis (Gemini) and transcription (Whisper) in parallel
-    //    Video file is still present at this point for frame extraction
+    // -----------------------------------------------------------------------
+    // Stage 2: Extract audio
+    // -----------------------------------------------------------------------
+    const extractStage = startStage("extractAudio");
+    try {
+      audioPath = await extractAudio(videoPath, id);
+      extractStage.end();
+    } catch (err) {
+      extractStage.end(err);
+      throw err;
+    }
+
+    await onProgress("Analysing your video…");
+
+    // -----------------------------------------------------------------------
+    // Stage 3: Parallel — transcription + visual analysis (with timeouts)
+    // -----------------------------------------------------------------------
+    const parallelStage = startStage("parallel");
+
     const [transcriptionResult, visualResult] = await Promise.allSettled([
-      transcribe(audioPath),
-      analyzeVideo(videoPath),
+      withTimeout(transcribe(audioPath), transcribeTimeout, "transcription"),
+      withTimeout(analyzeVideo(videoPath), visualTimeout, "visual"),
     ]);
 
-    // Visual result is optional — gracefully degrade if it failed
-    const visual = visualResult.status === "fulfilled" ? visualResult.value : null;
-    if (visualResult.status === "rejected") {
-      console.log("⚠️ Visual analysis error (non-fatal):", visualResult.reason?.message);
-    }
-    console.log("🎨 Visual analysis result:", visual ? JSON.stringify(visual).slice(0, 200) : "null/failed");
+    parallelStage.end();
 
-    // Transcription must succeed
-    if (transcriptionResult.status === "rejected") {
-      throw transcriptionResult.reason;
+    // Visual result is optional — gracefully degrade if it failed or timed out
+    let visual = null;
+    if (visualResult.status === "fulfilled") {
+      visual = visualResult.value;
+    } else {
+      const reason = visualResult.reason;
+      console.log(
+        "⚠️ Visual analysis error (non-fatal):",
+        reason?.message ?? String(reason)
+      );
     }
+    console.log(
+      "🎨 Visual analysis result:",
+      visual ? JSON.stringify(visual).slice(0, 200) : "null/failed"
+    );
+
+    // Transcription must succeed — if it timed out or failed, abort
+    if (transcriptionResult.status === "rejected") {
+      const reason = transcriptionResult.reason;
+      console.log(
+        "[PIPELINE] transcription FAIL elapsed=" + (Date.now() - pipelineStart),
+        "error=" + (reason?.message ?? String(reason))
+      );
+      // Both transcription AND visual failed → total failure
+      if (visual === null) {
+        console.log(
+          "[PIPELINE] total failure elapsed=" + (Date.now() - pipelineStart)
+        );
+        return "⚠️ _Sorry, we could not analyse your video. Please try resubmitting — if the problem persists, the service may be temporarily unavailable._";
+      }
+      // Transcription failed but visual succeeded — still can't produce feedback
+      return "⚠️ _The transcription service is currently unavailable. Please try resubmitting your video._";
+    }
+
     const transcription = transcriptionResult.value;
 
     if (!transcription.text || transcription.text.length < 10) {
@@ -52,22 +130,47 @@ export async function generateFeedback(msg, user, durationSeconds, questionTopic
     }
 
     // Use Whisper's actual spoken duration if available, fall back to video duration
-    const actualDuration = transcription.duration > 0
-      ? transcription.duration
-      : durationSeconds;
+    const actualDuration =
+      transcription.duration > 0 ? transcription.duration : durationSeconds;
 
-    // 4. Analyze speech with rich prompt + real stats
-    const result = await analyzeSpeech(
-      transcription.text,
-      actualDuration,
-      transcription.words,
-      questionTopic,
-      questionText
+    await onProgress("Scoring your speech…");
+
+    // -----------------------------------------------------------------------
+    // Stage 4: Speech analysis (with timeout — abort on timeout)
+    // -----------------------------------------------------------------------
+    const speechStage = startStage("analyzeSpeech");
+    let result;
+    try {
+      result = await withTimeout(
+        analyzeSpeech(
+          transcription.text,
+          actualDuration,
+          transcription.words,
+          questionTopic,
+          questionText
+        ),
+        speechTimeout,
+        "speech"
+      );
+      speechStage.end();
+    } catch (err) {
+      speechStage.end(err);
+      console.log(
+        "[PIPELINE] total failure elapsed=" + (Date.now() - pipelineStart)
+      );
+      return "⚠️ _The scoring service is currently unavailable. Please try resubmitting your video._";
+    }
+
+    // -----------------------------------------------------------------------
+    // Stage 5: Format combined feedback
+    // -----------------------------------------------------------------------
+    const formatted = formatFeedback(result, visual, user);
+
+    console.log(
+      "[PIPELINE] total DONE elapsed=" + (Date.now() - pipelineStart)
     );
 
-    // 5. Format the combined feedback message
-    return formatFeedback(result, visual, user);
-
+    return formatted;
   } finally {
     if (videoPath && fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
     if (audioPath && fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
@@ -76,8 +179,13 @@ export async function generateFeedback(msg, user, durationSeconds, questionTopic
 
 /**
  * Formats the combined audio + visual analysis into a WhatsApp-friendly message.
+ *
+ * @param {object}      result  - analyzeSpeech result (with _stats)
+ * @param {object|null} visual  - analyzeVideo result, or null if unavailable
+ * @param {string}      user    - User JID
+ * @returns {string}
  */
-function formatFeedback(result, visual, user) {
+export function formatFeedback(result, visual, user) {
   const username = user.split("@")[0];
   const s = result._stats;
 
@@ -88,7 +196,8 @@ function formatFeedback(result, visual, user) {
   msg += `━━━━━━━━━━━━━━━\n`;
   msg += `⏱️ *Duration:* ${s.duration}`;
   if (s.wpm) {
-    const paceLabel = s.wpm < 100 ? "🐢 Slow" : s.wpm <= 150 ? "✅ Good" : "⚡ Fast";
+    const paceLabel =
+      s.wpm < 100 ? "🐢 Slow" : s.wpm <= 150 ? "✅ Good" : "⚡ Fast";
     msg += `  |  📊 *Pace:* ${s.wpm} wpm ${paceLabel}`;
   }
   msg += `\n`;
@@ -115,7 +224,7 @@ function formatFeedback(result, visual, user) {
     msg += `🎯 *On-topic:*   ${scoreBar(result.topicRelevance)} ${result.topicRelevance}/10\n`;
   }
 
-  // --- Visual Scores (only if Gemini returned results) ---
+  // --- Visual Scores (only if analysis succeeded) ---
   if (visual) {
     msg += `━━━━━━━━━━━━━━━\n`;
     msg += `👁️ *Eye Contact:*  ${scoreBar(visual.eyeContact)} ${visual.eyeContact}/10\n`;
@@ -145,8 +254,10 @@ function formatFeedback(result, visual, user) {
 
   // --- Visual Observations (detailed notes from Gemini) ---
   if (visual) {
-    const hasNotes = visual.eyeContactNote || visual.bodyLanguageNote || visual.expressionNote;
-    const hasStrengths = visual.visualStrengths && visual.visualStrengths.length > 0;
+    const hasNotes =
+      visual.eyeContactNote || visual.bodyLanguageNote || visual.expressionNote;
+    const hasStrengths =
+      visual.visualStrengths && visual.visualStrengths.length > 0;
 
     if (hasNotes || hasStrengths) {
       msg += `━━━━━━━━━━━━━━━\n`;
@@ -155,8 +266,8 @@ function formatFeedback(result, visual, user) {
       if (visual.bodyLanguageNote) msg += `  🧍 ${visual.bodyLanguageNote}\n`;
       if (visual.expressionNote) msg += `  😊 ${visual.expressionNote}\n`;
       if (hasStrengths) {
-        for (const s of visual.visualStrengths) {
-          msg += `  ✅ ${s}\n`;
+        for (const str of visual.visualStrengths) {
+          msg += `  ✅ ${str}\n`;
         }
       }
     }
@@ -196,6 +307,11 @@ function formatFeedback(result, visual, user) {
   if (result.overallComment) {
     msg += `━━━━━━━━━━━━━━━\n`;
     msg += `📝 ${result.overallComment}`;
+  }
+
+  // --- Visual unavailability note (appended when visual is null) ---
+  if (!visual) {
+    msg += `\n\n_(Visual analysis was unavailable for this submission.)_`;
   }
 
   return msg;

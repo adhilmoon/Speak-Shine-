@@ -17,6 +17,8 @@ import generateVoice from "./generateVoice.js";
 import generatePoster from "./poster.js";
 import { resetStatus } from "./resetStatus.js";
 import { generateFeedback } from "./ai/feedback.js";
+import { chunkMessage, sendChunks as _sendChunks } from "./helpers.js";
+import { hashBuffer, markProcessing, storeResult, getCacheEntry, evict } from "./ai/dedupCache.js";
 import { processMessage, formatResponse } from "./grammar/processor.js";
 import { isOnCooldown, setCooldown, getRemainingCooldown } from "./grammar/cooldown.js";
 import fs from "fs";
@@ -67,6 +69,10 @@ const safeSend = async (sock, jid, msg) => {
     return false;
   }
 };
+
+// Wrapper that binds the local safeSend implementation
+const sendChunks = (sock, jid, chunks, mentions = []) =>
+  _sendChunks(sock, jid, chunks, mentions, safeSend);
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState("auth");
@@ -478,13 +484,54 @@ async function startBot() {
       setTimeout(() => processedMsgIds.delete(msgId), 60000);
       if (isOwnerDM && dmVideo) {
         const ownerStatus = await getStatus();
-        generateFeedback(msg, OWNER, dmVideo.seconds || 60, ownerStatus?.todayTopic || null, ownerStatus?.todayQuestion || null, sock)
+
+        // Dedup check for owner DM
+        const ownerHash = hashBuffer(Buffer.from(dmVideo.fileSha256 || dmVideo.mediaKey || msg.key.id));
+        const ownerCacheEntry = getCacheEntry(ownerHash);
+        if (ownerCacheEntry === 'processing') {
+          safeSend(sock, OWNER, { text: `⏳ _Your video is already being processed! Please wait._` });
+          return;
+        }
+        if (typeof ownerCacheEntry === 'string') {
+          const ownerChunks = chunkMessage(ownerCacheEntry);
+          sendChunks(sock, OWNER, ownerChunks);
+          return;
+        }
+
+        markProcessing(ownerHash);
+
+        const ownerProgressSent = await sock.sendMessage(OWNER, {
+          text: `⏳ _Analysing your video…_`,
+        });
+        const ownerProgressMsgKey = ownerProgressSent?.key;
+
+        const ownerOnProgress = async (stage) => {
+          if (!ownerProgressMsgKey) return;
+          try {
+            await sock.sendMessage(OWNER, {
+              text: `⏳ _${stage}_`,
+              edit: ownerProgressMsgKey,
+            });
+          } catch (_) {}
+        };
+
+        generateFeedback(msg, OWNER, dmVideo.seconds || 60, ownerStatus?.todayTopic || null, ownerStatus?.todayQuestion || null, sock, { onProgress: ownerOnProgress })
           .then((feedbackText) => {
-            safeSend(sock, OWNER, { text: feedbackText });
+            storeResult(ownerHash, feedbackText);
+            const ownerChunks = chunkMessage(feedbackText);
+            sendChunks(sock, OWNER, ownerChunks);
           })
           .catch((err) => {
+            evict(ownerHash);
             console.log("❌ Owner test feedback error:", err.message);
-            safeSend(sock, OWNER, { text: `❌ Feedback failed: ${err.message}` });
+            if (ownerProgressMsgKey) {
+              sock.sendMessage(OWNER, {
+                text: `❌ _Feedback failed: ${err.message}_`,
+                edit: ownerProgressMsgKey,
+              }).catch(() => safeSend(sock, OWNER, { text: `❌ Feedback failed: ${err.message}` }));
+            } else {
+              safeSend(sock, OWNER, { text: `❌ Feedback failed: ${err.message}` });
+            }
           });
         return;
       }
@@ -1169,22 +1216,65 @@ async function startBot() {
           mentions: [dbUser],
         });
 
-        await safeSend(sock, chatId, {
-          text: `🤖 ⏳ _Analyzing your video... feedback coming shortly!_`,
-          mentions: [dbUser],
-        });
-
         // Fetch today's topic for AI relevance check
         const todayStatus = await getStatus();
 
+        // Compute content hash for dedup
+        const hash = hashBuffer(Buffer.from(video.fileSha256 || video.mediaKey || msg.key.id));
+        const cacheEntry = getCacheEntry(hash);
+
+        if (cacheEntry === 'processing') {
+          await safeSend(sock, chatId, {
+            text: `⏳ _Your video is already being processed! Please wait._`,
+            mentions: [dbUser],
+          });
+          return;
+        }
+
+        if (typeof cacheEntry === 'string') {
+          const cachedChunks = chunkMessage(cacheEntry);
+          await sendChunks(sock, chatId, cachedChunks, [dbUser]);
+          return;
+        }
+
+        markProcessing(hash);
+
+        // Send initial progress message and capture its key
+        const progressSent = await sock.sendMessage(chatId, {
+          text: `⏳ _Analysing your video, @${username}..._`,
+          mentions: [dbUser],
+        });
+        const progressMsgKey = progressSent?.key;
+
+        const onProgress = async (stage) => {
+          if (!progressMsgKey) return;
+          try {
+            await sock.sendMessage(chatId, {
+              text: `⏳ _${stage}_`,
+              edit: progressMsgKey,
+            });
+          } catch (_) {}
+        };
+
         // 🤖 AI Feedback (runs async, won't block submission)
-        generateFeedback(msg, dbUser, video.seconds || 60, todayStatus?.todayTopic || null, todayStatus?.todayQuestion || null, sock)
+        generateFeedback(msg, dbUser, video.seconds || 60, todayStatus?.todayTopic || null, todayStatus?.todayQuestion || null, sock, { onProgress })
           .then((feedbackText) => {
-            safeSend(sock, chatId, { text: feedbackText, mentions: [dbUser] });
+            storeResult(hash, feedbackText);
+            const chunks = chunkMessage(feedbackText);
+            sendChunks(sock, chatId, chunks, [dbUser]);
           })
           .catch((err) => {
+            evict(hash);
             console.log("❌ Feedback error:", err.message);
-            safeSend(sock, chatId, { text: `⚠️ _Feedback unavailable: ${err.message}_`, mentions: [dbUser] });
+            const errMsg = `⚠️ _Feedback unavailable: ${err.message}_`;
+            if (progressMsgKey) {
+              sock.sendMessage(chatId, {
+                text: errMsg,
+                edit: progressMsgKey,
+              }).catch(() => safeSend(sock, chatId, { text: errMsg, mentions: [dbUser] }));
+            } else {
+              safeSend(sock, chatId, { text: errMsg, mentions: [dbUser] });
+            }
           });
 
         return; // Done with video
