@@ -67,6 +67,7 @@ export async function generateFeedback(
     // Stage 2: Extract audio
     // -----------------------------------------------------------------------
     const extractStage = startStage("extractAudio");
+    let audioPath, qualityWarning;
     try {
       const extracted = await extractAudio(videoPath, id);
       audioPath = extracted.audioPath;
@@ -255,12 +256,13 @@ export function formatFeedback(result, visual, user, qualityWarning = null) {
     }
   }
 
-  // Pronunciation note (inline with scores)
+  // Pronunciation note
   if (result.pronunciationNote) {
+    msg += `━━━━━━━━━━━━━━━\n`;
     msg += `🗣️ *Pronunciation:* _${result.pronunciationNote}_\n`;
   }
 
-  // Rhythm note (inline with scores)
+  // Rhythm note
   if (result.rhythmNote) {
     msg += `🎵 *Rhythm:* _${result.rhythmNote}_\n`;
   }
