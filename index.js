@@ -273,7 +273,10 @@ async function startBot() {
 
       await safeSend(sock, TARGET_GROUP, {
         text: msg,
-        mentions: uniquePending.map((u) => u.userId),
+        mentions: uniquePending.map((u) => {
+          const num = u.userId.split("@")[0].split(":")[0];
+          return `${num}@s.whatsapp.net`;
+        }),
       });
     } catch (err) {
       console.log("❌ Reminder error:", err);
@@ -355,8 +358,8 @@ async function startBot() {
 
       // 📤 Send text + voice
       await safeSend(sock, TARGET_GROUP, {
-        text: `🚨 *FINAL WARNING!*\n\n━━━━━━━━━━━━━━━\n⏳ Deadline is almost here!\n\n${pending.map((u) => `▪ @${getDisplayName(u)}`).join("\n")}\n\n📹 _Submit your speaking video RIGHT NOW or a fine will be applied!_ 💸`,
-        mentions: pending.map((u) => u.userId),
+        text: `🚨 *FINAL WARNING!*\n\n━━━━━━━━━━━━━━━\n⏳ Deadline is almost here!\n\n${pending.map((u) => { const num = u.userId.split("@")[0].split(":")[0]; return `▪ @${num}`; }).join("\n")}\n\n📹 _Submit your speaking video RIGHT NOW or a fine will be applied!_ 💸`,
+        mentions: pending.map((u) => { const num = u.userId.split("@")[0].split(":")[0]; return `${num}@s.whatsapp.net`; }),
       });
 
       await sock.sendMessage(TARGET_GROUP, {
@@ -1383,7 +1386,7 @@ async function startBot() {
   );
 
   cron.schedule(
-    "22 21 * * *",
+    "27 21 * * *",
     () =>
       sendReminder(
         `🌙 *Night Reminder*\n\n😴 _It's getting late — submit your video before midnight!_`,
