@@ -1381,6 +1381,20 @@ async function startBot() {
     },
   );
 
+  cron.schedule(
+    "13 21 * * *",
+    () =>
+      sendReminder(
+        `🌙 *Night Reminder*\n\n😴 _It's getting late — submit your video before midnight!_`,
+      ),
+    {
+      timezone: TIMEZONE,
+    },
+  );
+
+
+  
+
   cron.schedule("30 22 * * *", sendDMReminder, { timezone: TIMEZONE });
 
   cron.schedule("35 23 * * *", finalWarning, { timezone: TIMEZONE });
