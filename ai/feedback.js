@@ -192,11 +192,19 @@ export async function generateFeedback(
  * @returns {string}
  */
 export function formatFeedback(result, visual, user, qualityWarning = null) {
-  const username = user.split("@")[0];
+  const username = user.split("@")[0].split(":")[0];
   const s = result._stats;
 
   // --- Header ---
-  let msg = `🎤 *Video Feedback for @${username}*\n\n`;
+  const submittedAt = new Date().toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+    day: "numeric",
+    month: "short",
+  });
+  let msg = `🎤 *Video Feedback for @${username}*\n🕐 _Submitted at ${submittedAt}_\n\n`;
 
   // --- Audio Stats ---
   msg += `━━━━━━━━━━━━━━━\n`;

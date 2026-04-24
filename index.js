@@ -583,18 +583,22 @@ async function startBot() {
 
       // Streak reward announcement
       if (streakRewardUsers.length > 0) {
-        msg += `\n🎁 *7-Day Streak Reward!*\n`;
+        msg += `\n━━━━━━━━━━━━━━━\n`;
+        msg += `🎁 *7-Day Streak Reward!*\n`;
+        msg += `_Incredible discipline — 7 days straight! As a reward, ₹${STREAK_REWARD_AMOUNT} has been deducted from your fine. Keep going!_ 💪\n\n`;
         streakRewardUsers.forEach((u) => {
           const deducted = Math.min((u.fine || 0) + STREAK_REWARD_AMOUNT, STREAK_REWARD_AMOUNT);
-          msg += `🏆 @${getMentionPhone(u)} — ${u.streak} day streak! ₹${deducted} fine removed 🎉\n`;
+          msg += `🏆 @${getMentionPhone(u)} — *${u.streak} day streak!* ₹${deducted} fine removed 🎉\n`;
         });
       }
 
       if (pending.length) {
-        msg += `\n⚠️ *Missed & Fined ₹${FINE_AMOUNT}:*\n`;
+        msg += `\n━━━━━━━━━━━━━━━\n`;
+        msg += `⚠️ *Missed Today — Fined ₹${FINE_AMOUNT}:*\n`;
         pending.forEach((u) => {
           msg += `❌ @${getMentionPhone(u)} _(Total fine: ₹${u.fine})_\n`;
         });
+        msg += `\n💡 _Don't let it pile up — submit tomorrow and stay consistent!_`;
       }
 
       if (!pending.length) {
@@ -602,7 +606,8 @@ async function startBot() {
       }
 
       msg += `\n━━━━━━━━━━━━━━━
-🔥 _Consistency builds champions._`;
+🔥 _Consistency builds champions._
+💡 _7 days in a row = ₹5 fine reduction. Keep your streak alive!_`;
 
       const allMentions = filteredUsers.map((u) => resolveJid(u.userId, pMap)).filter(Boolean);
 
