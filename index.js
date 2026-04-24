@@ -834,17 +834,33 @@ async function startBot() {
       const botPhone = sock.user?.id?.split(":")[0].split("@")[0] ?? "";
       if (botPhone && user.includes(botPhone)) return;
 
-      // Normalize userId - always use @s.whatsapp.net format
+      // Normalize userId - resolve @lid to real @s.whatsapp.net JID via group metadata
       const normalizeUserId = (id) => {
         if (!id) return id;
         if (id.includes("@lid") || id.includes("@c.us")) {
+          // Try to resolve via cached group metadata
           const phone = id.split("@")[0].split(":")[0];
           return `${phone}@s.whatsapp.net`;
         }
         return id;
       };
 
-      const normalizedUser = normalizeUserId(user);
+      // For @lid JIDs, resolve to real JID from group metadata
+      let resolvedUser = user;
+      if (user.includes("@lid")) {
+        try {
+          const meta = await sock.groupMetadata(chatId);
+          const match = meta.participants.find(p =>
+            p.id === user ||
+            p.id.split("@")[0].split(":")[0] === user.split("@")[0].split(":")[0]
+          );
+          if (match) resolvedUser = match.id;
+        } catch (_) {
+          resolvedUser = normalizeUserId(user);
+        }
+      }
+
+      const normalizedUser = normalizeUserId(resolvedUser);
 
       const cmd = text.trim().toLowerCase();
 
