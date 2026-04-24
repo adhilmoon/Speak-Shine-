@@ -558,7 +558,18 @@ async function startBot() {
           .then((feedbackText) => {
             storeResult(ownerHash, feedbackText);
             const ownerChunks = chunkMessage(feedbackText);
-            sendChunks(sock, OWNER, ownerChunks);
+            // Edit the progress message with the first chunk, send rest as new messages
+            if (ownerProgressMsgKey && ownerChunks.length > 0) {
+              sock.sendMessage(OWNER, {
+                text: ownerChunks[0],
+                edit: ownerProgressMsgKey,
+              }).catch(() => safeSend(sock, OWNER, { text: ownerChunks[0] }));
+              for (let i = 1; i < ownerChunks.length; i++) {
+                safeSend(sock, OWNER, { text: ownerChunks[i] });
+              }
+            } else {
+              sendChunks(sock, OWNER, ownerChunks);
+            }
           })
           .catch((err) => {
             evict(ownerHash);
@@ -1301,7 +1312,18 @@ async function startBot() {
           .then((feedbackText) => {
             storeResult(hash, feedbackText);
             const chunks = chunkMessage(feedbackText);
-            sendChunks(sock, chatId, chunks, [dbUser]);
+            // Edit the progress message with the first chunk, send rest as new messages
+            if (progressMsgKey && chunks.length > 0) {
+              sock.sendMessage(chatId, {
+                text: chunks[0],
+                edit: progressMsgKey,
+              }).catch(() => safeSend(sock, chatId, { text: chunks[0], mentions: [dbUser] }));
+              for (let i = 1; i < chunks.length; i++) {
+                safeSend(sock, chatId, { text: chunks[i], mentions: [dbUser] });
+              }
+            } else {
+              sendChunks(sock, chatId, chunks, [dbUser]);
+            }
           })
           .catch((err) => {
             evict(hash);
