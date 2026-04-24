@@ -70,6 +70,8 @@ console.error = (...args) => { if (!_isBaileysNoise(args)) _origError(...args); 
 const TARGET_GROUP = process.env.TARGET_GROUP;
 const OWNER = process.env.OWNER_NUMBER;
 const TIMEZONE = "Asia/Kolkata";
+let sock = null; // module-level so crons always use the latest connection
+let cronsRegistered = false; // ensure crons only register once
 const FINE_AMOUNT = Number(process.env.FINE_AMOUNT) || 2;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || null;
 
@@ -161,7 +163,7 @@ async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState("auth");
   const { version } = await fetchLatestBaileysVersion();
 
-  const sock = makeWASocket({
+  sock = makeWASocket({
     version,
     auth: state,
     syncFullHistory: false,
@@ -1756,6 +1758,9 @@ async function startBot() {
   });
 
   // ================= CRON =================
+  if (!cronsRegistered) {
+    cronsRegistered = true;
+
   cron.schedule("30 7 * * *", sendGoodMorning, { timezone: TIMEZONE });
 
   cron.schedule("0 8 * * *", sendQuestion, { timezone: TIMEZONE });
@@ -1824,6 +1829,8 @@ async function startBot() {
       }
     }, { timezone: TIMEZONE });
   }
+
+  } // end cronsRegistered guard
 
   // ================= CONNECTION =================
   let reconnecting = false;
