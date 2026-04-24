@@ -435,6 +435,8 @@ async function startBot() {
 
       if (!pending.length) return;
 
+      const pMap = await getParticipantMap(sock, TARGET_GROUP);
+
       const id = Date.now();
       const mp3 = `./warning-${id}.mp3`;
       const ogg = `./warning-${id}.ogg`;
@@ -466,7 +468,7 @@ async function startBot() {
       // 📤 Send text + voice
       await safeSend(sock, TARGET_GROUP, {
         text: `🚨 *FINAL WARNING!*\n\n━━━━━━━━━━━━━━━\n⏳ Deadline is almost here!\n\n${pending.map((u) => { const num = u.userId.split("@")[0].split(":")[0]; return `▪ @${num}`; }).join("\n")}\n\n📹 _Submit your speaking video RIGHT NOW or a fine will be applied!_ 💸`,
-        mentions: pending.map((u) => { const num = u.userId.split("@")[0].split(":")[0]; return `${num}@s.whatsapp.net`; }),
+        mentions: pending.map((u) => resolveJid(u.userId, pMap)),
       });
 
       await sock.sendMessage(TARGET_GROUP, {
@@ -505,6 +507,9 @@ async function startBot() {
       const pending = filteredUsers.filter((u) => !u.completed);
 
       console.log(`📊 Report: ${completed.length} submitted, ${pending.length} pending`);
+
+      // Get actual participant JIDs for proper mentions
+      const pMap = await getParticipantMap(sock, TARGET_GROUP);
 
       let totalTodayFine = 0;
 
@@ -597,10 +602,7 @@ async function startBot() {
       msg += `\n━━━━━━━━━━━━━━━
 🔥 _Consistency builds champions._`;
 
-      const allMentions = filteredUsers.map((u) => {
-        const phone = u.userId.split("@")[0].split(":")[0];
-        return `${phone}@s.whatsapp.net`;
-      }).filter(Boolean);
+      const allMentions = filteredUsers.map((u) => resolveJid(u.userId, pMap)).filter(Boolean);
 
       await safeSend(sock, TARGET_GROUP, {
         text: msg,
@@ -894,6 +896,7 @@ async function startBot() {
           }
         }
         const uniqueUsers = [...merged.values()];
+        const pMap = await getParticipantMap(sock, chatId);
 
         let totalFine = 0;
         let msgText = `╔══════════════════╗\n💰 *FINE REPORT*\n╚══════════════════╝\n\n📋 *Individual Fines:*\n━━━━━━━━━━━━━━━\n`;
@@ -901,20 +904,22 @@ async function startBot() {
         uniqueUsers.forEach((u) => {
           const fine = u.fine || 0;
           totalFine += fine;
-          const display = u.name || getName(u.userId);
-          msgText += `▪️ ${display} → ₹${fine}\n`;
+          const phone = u.userId.split("@")[0].split(":")[0];
+          msgText += `▪️ @${phone} → ₹${fine}\n`;
         });
 
         msgText += `\n━━━━━━━━━━━━━━━\n💵 *Total Fine Pool:* ₹${totalFine}\n\n⚠️ _Missed daily submissions result in fines._\n🔥 _Stay consistent. Avoid penalties._\n`;
 
         return safeSend(sock, chatId, {
           text: msgText,
+          mentions: uniqueUsers.map(u => resolveJid(u.userId, pMap)),
         });
       }
 
       // 🏆 LEADERBOARD
       if (cmd.startsWith("/leaderboard")) {
         const users = await User.find();
+        const pMap = await getParticipantMap(sock, chatId);
         let msgText = `╔══════════════════╗\n🏆  *LEADERBOARD*\n╚══════════════════╝\n\n`;
 
         users
@@ -922,13 +927,14 @@ async function startBot() {
           .sort((a, b) => b.completed - a.completed)
           .forEach((u, i) => {
             const medal = ["🥇", "🥈", "🥉"][i] || "🔹";
-            msgText += `${medal} @${getMentionPhone(u)} → ${u.completed ? "✅ Done" : "❌ Pending"}\n`;
+            const phone = u.userId.split("@")[0].split(":")[0];
+            msgText += `${medal} @${phone} → ${u.completed ? "✅ Done" : "❌ Pending"}\n`;
           });
         msgText += `\n━━━━━━━━━━━━━━━\n🔥 _Keep grinding — consistency wins!_`;
 
         return safeSend(sock, chatId, {
           text: msgText,
-          mentions: users.map((u) => u.userId),
+          mentions: users.filter(u => u.userId).map(u => resolveJid(u.userId, pMap)),
         });
       }
 
@@ -1058,12 +1064,13 @@ async function startBot() {
             { $inc: { fine: amount } },
             { upsert: true }
           );
-          results.push(`@${getName(userId)} → +₹${amount}`);
+          const phone = userId.split("@")[0].split(":")[0];
+          results.push(`@${phone} → +₹${amount}`);
         }
 
         return safeSend(sock, chatId, {
           text: `💸 *Fine Added!*\n\n━━━━━━━━━━━━━━━\n${results.join("\n")}\n\n✅ Fines updated successfully.`,
-          mentions: userAmounts.map(ua => ua.userId),
+          mentions: userAmounts.map(ua => ua.userId), // mentionedJid from WhatsApp = already correct JID
         });
       }
 
@@ -1126,7 +1133,8 @@ async function startBot() {
           if (!u) continue;
           const newFine = Math.max(0, (u.fine || 0) - amount);
           await User.updateOne({ userId: normalizedId }, { fine: newFine });
-          results.push(`@${getName(normalizedId)} → -₹${amount} (₹${newFine} remaining)`);
+          const phone = normalizedId.split("@")[0].split(":")[0];
+          results.push(`@${phone} → -₹${amount} (₹${newFine} remaining)`);
         }
 
         if (!results.length) {
@@ -1135,7 +1143,7 @@ async function startBot() {
 
         return safeSend(sock, chatId, {
           text: `💰 *Fine Removed!*\n\n━━━━━━━━━━━━━━━\n${results.join("\n")}\n\n✅ Fines updated successfully.`,
-          mentions: userAmounts.map(ua => normalizeUserId(ua.userId)),
+          mentions: userAmounts.map(ua => ua.userId), // mentionedJid from WhatsApp = already correct JID
         });
       }
 
@@ -1189,7 +1197,10 @@ async function startBot() {
 
         return safeSend(sock, chatId, {
           text: msg,
-          mentions: users.map((u) => u.userId).filter(Boolean),
+          mentions: users.filter(u => u.userId).map(u => {
+            const phone = u.userId.split("@")[0].split(":")[0];
+            return `${phone}@s.whatsapp.net`;
+          }),
         });
       }
 
@@ -1624,7 +1635,7 @@ async function startBot() {
         if (cacheEntry === 'processing') {
           await safeSend(sock, chatId, {
             text: `⏳ _Your video is already being processed! Please wait._`,
-            mentions: [dbUser],
+            mentions: [actualUserJid],
           });
           return;
         }
@@ -1664,9 +1675,9 @@ async function startBot() {
               sock.sendMessage(chatId, {
                 text: chunks[0],
                 edit: progressMsgKey,
-              }).catch(() => safeSend(sock, chatId, { text: chunks[0], mentions: [dbUser] }));
+              }).catch(() => safeSend(sock, chatId, { text: chunks[0], mentions: [actualUserJid] }));
               for (let i = 1; i < chunks.length; i++) {
-                safeSend(sock, chatId, { text: chunks[i], mentions: [dbUser] });
+                safeSend(sock, chatId, { text: chunks[i], mentions: [actualUserJid] });
               }
             } else {
               sendChunks(sock, chatId, chunks, [dbUser]);
@@ -1680,9 +1691,9 @@ async function startBot() {
               sock.sendMessage(chatId, {
                 text: errMsg,
                 edit: progressMsgKey,
-              }).catch(() => safeSend(sock, chatId, { text: errMsg, mentions: [dbUser] }));
+              }).catch(() => safeSend(sock, chatId, { text: errMsg, mentions: [actualUserJid] }));
             } else {
-              safeSend(sock, chatId, { text: errMsg, mentions: [dbUser] });
+              safeSend(sock, chatId, { text: errMsg, mentions: [actualUserJid] });
             }
           });
 
