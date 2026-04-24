@@ -23,6 +23,15 @@ vi.mock('../models/frameCacheSchema.js', () => {
   return { default: FrameCache };
 });
 
+// Mock the key manager so tests don't depend on env vars
+vi.mock('./groqKeyManager.js', () => ({
+  getVisionKey: vi.fn(() => 'test-api-key'),
+  markKeyExhausted: vi.fn(),
+  parseRetryAfter: vi.fn(() => 0),
+  keyStatus: vi.fn(() => '1 key(s) configured (1 available, 0 exhausted)'),
+  keyCount: vi.fn(() => 1),
+}));
+
 const { analyzeVideo } = await import('./analyzeVideo.js');
 const fetch = (await import('node-fetch')).default;
 const FrameCache = (await import('../models/frameCacheSchema.js')).default;
@@ -104,7 +113,6 @@ function mockFetchSuccess() {
 
 describe('Visual Analysis — 8 frames via 2 batches of 4', () => {
   beforeEach(() => {
-    process.env.GROQ_API_KEY = 'test-api-key';
     vi.clearAllMocks();
   });
 
@@ -284,8 +292,9 @@ describe('Visual Analysis — 8 frames via 2 batches of 4', () => {
     expect(apiCalls[2].model).toBe('llama-3.3-70b-versatile');
   });
 
-  it('returns null when GROQ_API_KEY is not set', async () => {
-    delete process.env.GROQ_API_KEY;
+  it('returns null when no API keys are configured', async () => {
+    const { getVisionKey } = await import('./groqKeyManager.js');
+    getVisionKey.mockReturnValueOnce(null);
     const result = await analyzeVideo('test_video.mp4');
     expect(result).toBeNull();
   });

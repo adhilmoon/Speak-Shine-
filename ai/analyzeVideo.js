@@ -2,6 +2,7 @@
 import fs from "fs";
 import fetch from "node-fetch";
 import FrameCache from "../models/frameCacheSchema.js";
+import { getVisionKey, markKeyExhausted, parseRetryAfter, keyStatus } from "./groqKeyManager.js";
 
 const FRAME_COUNT = 8;
 const GROQ_BATCH_LIMIT = 4; // split 8 frames into 2 batches of 4 (well under the 5-image limit)
@@ -86,7 +87,7 @@ async function extractAndStoreFrames(videoPath, videoId) {
  * batchInfo: { index: 0-based batch number, total: total batches, startSec, endSec }
  * Returns null on any failure.
  */
-async function analyzeFrameBatch(frameDocs, batchLabel, GROQ_API_KEY, batchInfo = {}) {
+async function analyzeFrameBatch(frameDocs, batchLabel, batchInfo = {}) {
   const { index = 0, total = 1, startSec = null, endSec = null } = batchInfo;
 
   // Tell the model which part of the video these frames cover so its notes are accurate
@@ -112,59 +113,74 @@ Return ONLY valid JSON (no markdown, no extra text):
   // Free base64 from memory before the API call
   frameDocs.forEach((doc) => { doc.base64 = null; });
 
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "meta-llama/llama-4-scout-17b-16e-instruct",
-      messages: [{ role: "user", content: userContent }],
-      temperature: 0.2,
-      max_tokens: 1500,
-    }),
-  });
+  // Try each available key — if one is rate-limited, rotate to the next
+  while (true) {
+    const apiKey = getVisionKey();
+    if (!apiKey) {
+      console.log(`[Visual] ${batchLabel} no available keys — skipping batch`);
+      return null;
+    }
 
-  if (!res.ok) {
-    const e = await res.text();
-    const is429 = res.status === 429;
-    console.log(`[Visual] ${batchLabel} Groq HTTP ${res.status}:`, e.slice(0, 300));
-    if (is429) console.log(`[Visual] ⚠️ Daily token limit reached — visual analysis will be skipped until quota resets`);
-    return null;
-  }
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "meta-llama/llama-4-scout-17b-16e-instruct",
+        messages: [{ role: "user", content: userContent }],
+        temperature: 0.2,
+        max_tokens: 1500,
+      }),
+    });
 
-  const data = await res.json();
-  const raw = data?.choices?.[0]?.message?.content?.trim();
-  if (!raw) { console.log(`[Visual] ${batchLabel} no text returned`); return null; }
+    if (res.status === 429) {
+      const errText = await res.text();
+      const retryMs = parseRetryAfter(errText);
+      markKeyExhausted(apiKey, retryMs || undefined);
+      // Loop — try next available key
+      continue;
+    }
 
-  let jsonStr = raw;
-  const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fence) {
-    jsonStr = fence[1].trim();
-  } else {
-    const s = raw.indexOf("{"), e = raw.lastIndexOf("}");
-    if (s !== -1 && e !== -1) jsonStr = raw.slice(s, e + 1);
-  }
-  jsonStr = jsonStr.replace(/,\s*([}\]])/g, "$1");
+    if (!res.ok) {
+      const e = await res.text();
+      console.log(`[Visual] ${batchLabel} Groq HTTP ${res.status}:`, e.slice(0, 300));
+      return null;
+    }
 
-  try {
-    return JSON.parse(jsonStr);
-  } catch (parseErr) {
-    console.log(`[Visual] ${batchLabel} JSON parse failed, attempting partial extraction`);
-    const extract = (key) => {
-      const m = raw.match(new RegExp(`"${key}"\\s*:\\s*(\\d+)`));
-      return m ? parseInt(m[1]) : null;
-    };
-    const eyeContact = extract("eyeContact");
-    const bodyLanguage = extract("bodyLanguage");
-    const facialExpression = extract("facialExpression");
-    const overallPresence = extract("overallPresence");
-    if (eyeContact === null && bodyLanguage === null) return null;
-    return {
-      eyeContact, bodyLanguage, facialExpression, overallPresence,
-      eyeContactNote: "Analysis partially available.",
-      bodyLanguageNote: "Analysis partially available.",
-      expressionNote: "Analysis partially available.",
-      visualSuggestions: [], visualStrengths: [],
-    };
+    const data = await res.json();
+    const raw = data?.choices?.[0]?.message?.content?.trim();
+    if (!raw) { console.log(`[Visual] ${batchLabel} no text returned`); return null; }
+
+    let jsonStr = raw;
+    const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fence) {
+      jsonStr = fence[1].trim();
+    } else {
+      const s = raw.indexOf("{"), e = raw.lastIndexOf("}");
+      if (s !== -1 && e !== -1) jsonStr = raw.slice(s, e + 1);
+    }
+    jsonStr = jsonStr.replace(/,\s*([}\]])/g, "$1");
+
+    try {
+      return JSON.parse(jsonStr);
+    } catch (parseErr) {
+      console.log(`[Visual] ${batchLabel} JSON parse failed, attempting partial extraction`);
+      const extract = (key) => {
+        const m = raw.match(new RegExp(`"${key}"\\s*:\\s*(\\d+)`));
+        return m ? parseInt(m[1]) : null;
+      };
+      const eyeContact = extract("eyeContact");
+      const bodyLanguage = extract("bodyLanguage");
+      const facialExpression = extract("facialExpression");
+      const overallPresence = extract("overallPresence");
+      if (eyeContact === null && bodyLanguage === null) return null;
+      return {
+        eyeContact, bodyLanguage, facialExpression, overallPresence,
+        eyeContactNote: "Analysis partially available.",
+        bodyLanguageNote: "Analysis partially available.",
+        expressionNote: "Analysis partially available.",
+        visualSuggestions: [], visualStrengths: [],
+      };
+    }
   }
 }
 
@@ -219,7 +235,7 @@ function mergeBatchResults(a, b) {
  * @param {string}   GROQ_API_KEY
  * @returns {Promise<object|null>}
  */
-async function validateAndReconcile(batchResults, merged, GROQ_API_KEY) {
+async function validateAndReconcile(batchResults, merged) {
   // Summarise each batch result as readable text for the validator
   const batchSummaries = batchResults.map((r, i) => {
     return `Assessment ${i + 1} (${i === 0 ? "first half" : i === batchResults.length - 1 ? "second half" : `part ${i + 1}`} of video):
@@ -247,9 +263,12 @@ Return ONLY valid JSON (no markdown, no extra text):
 {"eyeContact":<1-10>,"bodyLanguage":<1-10>,"facialExpression":<1-10>,"overallPresence":<1-10>,"eyeContactNote":"<one clear observation>","bodyLanguageNote":"<one clear observation>","expressionNote":"<one clear observation>","visualSuggestions":["<tip>","<tip>"],"visualStrengths":["<positive>"]}`;
 
   try {
+    const apiKey = getVisionKey();
+    if (!apiKey) { console.log("[Visual] validator: no available keys"); return null; }
+
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile", // text-only model — fast and accurate for reconciliation
         messages: [{ role: "user", content: prompt }],
@@ -289,8 +308,9 @@ Return ONLY valid JSON (no markdown, no extra text):
 }
 
 export async function analyzeVideo(videoPath) {
-  const GROQ_API_KEY = process.env.GROQ_API_KEY;
-  if (!GROQ_API_KEY) { console.log("GROQ_API_KEY not set"); return null; }
+  // Check at least one key is configured
+  const initialKey = getVisionKey();
+  if (!initialKey) { console.log(`[Visual] No Groq API keys configured (${keyStatus()})`); return null; }
 
   const videoId = `vid_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -329,7 +349,6 @@ export async function analyzeVideo(videoPath) {
         return analyzeFrameBatch(
           batch,
           `batch${idx + 1}/${batches.length}`,
-          GROQ_API_KEY,
           { index: idx, total: batches.length, startSec, endSec }
         );
       })
@@ -350,7 +369,7 @@ export async function analyzeVideo(videoPath) {
     // contradictions and produce a single accurate, coherent final result.
     const validBatchResults = batchResults.filter(Boolean);
     const validated = validBatchResults.length >= 2
-      ? await validateAndReconcile(validBatchResults, merged, GROQ_API_KEY)
+      ? await validateAndReconcile(validBatchResults, merged)
       : merged;
 
     const final = validated ?? merged;

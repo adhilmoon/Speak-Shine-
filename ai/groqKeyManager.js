@@ -1,0 +1,149 @@
+/**
+ * ai/groqKeyManager.js — Smart API key rotation for Groq.
+ *
+ * Reads GROQ_API_KEYS (comma-separated) from .env.
+ * Falls back to GROQ_API_KEY if only one key is configured.
+ *
+ * Strategy: smart rotation with per-key rate-limit tracking.
+ *   - Picks the next available (non-exhausted) key in round-robin order.
+ *   - When a key gets a 429, marks it as exhausted until its reset time.
+ *   - If ALL keys are exhausted, returns null so the caller can skip gracefully.
+ *
+ * Usage:
+ *   import { getVisionKey, markKeyExhausted } from './groqKeyManager.js';
+ *
+ *   const key = getVisionKey();
+ *   if (!key) { ... skip visual analysis ... }
+ *
+ *   const res = await fetch(..., { headers: { Authorization: `Bearer ${key}` } });
+ *   if (res.status === 429) {
+ *     const retryAfterMs = parseRetryAfter(res);
+ *     markKeyExhausted(key, retryAfterMs);
+ *   }
+ */
+
+// ---------------------------------------------------------------------------
+// Load keys from environment
+// ---------------------------------------------------------------------------
+
+function loadKeys() {
+  const multi = process.env.GROQ_API_KEYS;
+  if (multi) {
+    const keys = multi.split(",").map(k => k.trim()).filter(Boolean);
+    if (keys.length > 0) return keys;
+  }
+  const single = process.env.GROQ_API_KEY;
+  if (single) return [single.trim()];
+  return [];
+}
+
+const KEYS = loadKeys();
+
+// ---------------------------------------------------------------------------
+// Per-key state tracking
+// ---------------------------------------------------------------------------
+
+/**
+ * Maps key → timestamp (ms) when it becomes available again.
+ * If not in this map (or timestamp is in the past), the key is available.
+ * @type {Map<string, number>}
+ */
+const exhaustedUntil = new Map();
+
+// Round-robin cursor
+let cursor = 0;
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the next available Groq API key, or null if all are exhausted.
+ * Uses round-robin with exhaustion awareness.
+ *
+ * @returns {string | null}
+ */
+export function getVisionKey() {
+  if (KEYS.length === 0) return null;
+
+  const now = Date.now();
+  // Try each key starting from cursor
+  for (let i = 0; i < KEYS.length; i++) {
+    const idx = (cursor + i) % KEYS.length;
+    const key = KEYS[idx];
+    const blockedUntil = exhaustedUntil.get(key) ?? 0;
+
+    if (now >= blockedUntil) {
+      // Advance cursor for next call (round-robin)
+      cursor = (idx + 1) % KEYS.length;
+      return key;
+    }
+  }
+
+  // All keys exhausted — log the earliest reset time
+  const earliest = Math.min(...[...exhaustedUntil.values()]);
+  const waitSec = Math.ceil((earliest - now) / 1000);
+  console.log(`[KeyManager] ⚠️ All ${KEYS.length} Groq key(s) exhausted. Next reset in ~${waitSec}s`);
+  return null;
+}
+
+/**
+ * Marks a key as rate-limited until `resetAfterMs` milliseconds from now.
+ * If resetAfterMs is not provided, defaults to 24 hours (safe fallback for daily TPD limits).
+ *
+ * @param {string} key
+ * @param {number} [resetAfterMs]
+ */
+export function markKeyExhausted(key, resetAfterMs) {
+  const ms = resetAfterMs ?? 24 * 60 * 60 * 1000; // default: 24h
+  const resetAt = Date.now() + ms;
+  exhaustedUntil.set(key, resetAt);
+
+  const resetIn = Math.ceil(ms / 60000);
+  const keyHint = key.slice(-6); // last 6 chars for identification
+  console.log(`[KeyManager] Key ...${keyHint} exhausted — will retry in ~${resetIn} min (${KEYS.length - countExhausted()} key(s) remaining)`);
+}
+
+/**
+ * Parses the retry-after duration from a Groq 429 response body.
+ * Groq includes "Please try again in Xm Ys" in the error message.
+ *
+ * @param {string} responseText — raw response body text
+ * @returns {number} milliseconds to wait, or 0 if not parseable
+ */
+export function parseRetryAfter(responseText) {
+  // Match "Please try again in 23m35.4048s" or "in 5m" or "in 30s"
+  const match = responseText.match(/try again in\s+(?:(\d+)m)?(?:([\d.]+)s)?/i);
+  if (!match) return 0;
+  const minutes = parseInt(match[1] ?? "0");
+  const seconds = parseFloat(match[2] ?? "0");
+  return Math.ceil((minutes * 60 + seconds) * 1000) + 5000; // +5s buffer
+}
+
+/**
+ * Returns total number of configured keys.
+ * @returns {number}
+ */
+export function keyCount() {
+  return KEYS.length;
+}
+
+/**
+ * Returns number of currently exhausted keys.
+ * @returns {number}
+ */
+function countExhausted() {
+  const now = Date.now();
+  return [...exhaustedUntil.values()].filter(t => t > now).length;
+}
+
+/**
+ * Returns a summary string for logging.
+ * e.g. "3 keys configured (2 available, 1 exhausted)"
+ * @returns {string}
+ */
+export function keyStatus() {
+  const total = KEYS.length;
+  const exhausted = countExhausted();
+  return `${total} key(s) configured (${total - exhausted} available, ${exhausted} exhausted)`;
+}
