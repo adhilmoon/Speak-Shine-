@@ -66,14 +66,12 @@ async function extractAndStoreFrames(videoPath, videoId) {
 
   console.log(`[Visual] duration=${duration}s, interval=${(duration / FRAME_COUNT).toFixed(1)}s, timestamps=[${timestamps.join(", ")}]`);
 
-  // Extract sequentially — one frame in memory at a time
-  const ids = [];
-  for (let i = 0; i < timestamps.length; i++) {
-    const id = await extractAndStoreFrame(videoPath, timestamps[i], videoId, i);
-    if (id) ids.push(id);
-  }
+  // Extract all frames in parallel — each stores directly to MongoDB so memory stays low
+  const results = await Promise.all(
+    timestamps.map((ts, i) => extractAndStoreFrame(videoPath, ts, videoId, i))
+  );
 
-  return ids;
+  return results.filter(Boolean);
 }
 
 /**
