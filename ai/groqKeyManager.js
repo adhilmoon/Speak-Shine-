@@ -37,7 +37,12 @@ function loadKeys() {
   return [];
 }
 
-const KEYS = loadKeys();
+// Keys are loaded lazily on first use so dotenv has time to populate process.env
+let _keys = null;
+function getKeys() {
+  if (!_keys) _keys = loadKeys();
+  return _keys;
+}
 
 // ---------------------------------------------------------------------------
 // Per-key state tracking
@@ -59,6 +64,7 @@ let textCursor = 0;
 // ---------------------------------------------------------------------------
 
 function pickKey(cursorRef, label) {
+  const KEYS = getKeys();
   if (KEYS.length === 0) return { key: null };
 
   const now = Date.now();
@@ -75,7 +81,7 @@ function pickKey(cursorRef, label) {
 
   const earliest = Math.min(...[...exhaustedUntil.values()]);
   const waitSec = Math.ceil((earliest - now) / 1000);
-  console.log(`[KeyManager] ⚠️ All ${KEYS.length} Groq key(s) exhausted (${label}). Next reset in ~${waitSec}s`);
+  console.log(`[KeyManager] ⚠️ All ${getKeys().length} Groq key(s) exhausted (${label}). Next reset in ~${waitSec}s`);
   return { key: null };
 }
 
@@ -121,8 +127,8 @@ export function markKeyExhausted(key, resetAfterMs) {
   exhaustedUntil.set(key, resetAt);
 
   const resetIn = Math.ceil(ms / 60000);
-  const keyHint = key.slice(-6); // last 6 chars for identification
-  console.log(`[KeyManager] Key ...${keyHint} exhausted — will retry in ~${resetIn} min (${KEYS.length - countExhausted()} key(s) remaining)`);
+  const keyHint = key.slice(-6);
+  console.log(`[KeyManager] Key ...${keyHint} exhausted — will retry in ~${resetIn} min (${getKeys().length - countExhausted()} key(s) remaining)`);
 }
 
 /**
@@ -146,25 +152,16 @@ export function parseRetryAfter(responseText) {
  * @returns {number}
  */
 export function keyCount() {
-  return KEYS.length;
+  return getKeys().length;
 }
 
-/**
- * Returns number of currently exhausted keys.
- * @returns {number}
- */
 function countExhausted() {
   const now = Date.now();
   return [...exhaustedUntil.values()].filter(t => t > now).length;
 }
 
-/**
- * Returns a summary string for logging.
- * e.g. "3 keys configured (2 available, 1 exhausted)"
- * @returns {string}
- */
 export function keyStatus() {
-  const total = KEYS.length;
+  const total = getKeys().length;
   const exhausted = countExhausted();
   return `${total} key(s) configured (${total - exhausted} available, ${exhausted} exhausted)`;
 }
