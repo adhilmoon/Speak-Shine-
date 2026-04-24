@@ -159,6 +159,21 @@ const safeSend = async (sock, jid, msg) => {
 const sendChunks = (sock, jid, chunks, mentions = []) =>
   _sendChunks(sock, jid, chunks, mentions, safeSend);
 
+// Parses fluency/grammar/confidence/vocabulary scores from a feedback message string
+const parseFeedbackScores = (text) => {
+  const extract = (label) => {
+    const m = text.match(new RegExp(`${label}:[^\\d]*(\\d+)/10`));
+    return m ? parseInt(m[1]) : null;
+  };
+  const fluency    = extract("Fluency");
+  const grammar    = extract("Grammar");
+  const confidence = extract("Confidence");
+  const vocabulary = extract("Vocabulary");
+  if (fluency == null && grammar == null) return null;
+  return { fluency, grammar, confidence, vocabulary };
+};
+
+
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState("auth");
   const { version } = await fetchLatestBaileysVersion();
@@ -660,6 +675,13 @@ async function startBot() {
         console.log("🔄 Weekly submissions + fines reset (Sunday)");
       }
 
+      // On 1st of month reset monthly submissions
+      const dayOfMonth = new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata", day: "numeric" });
+      if (dayOfMonth === "1") {
+        await User.updateMany({}, { monthlySubmissions: 0 });
+        console.log("🔄 Monthly submissions reset (1st of month)");
+      }
+
       // Reset daily flags
       await resetStatus();
 
@@ -926,6 +948,61 @@ async function startBot() {
             return;
           }
         }
+
+        // ── Member DM commands (any user) ──────────────────────────────────
+        const dmCmd = text.trim().toLowerCase();
+
+        if (dmCmd === "/mystats") {
+          const senderJid = msg.key.remoteJid; // in a DM, remoteJid is the sender
+          const dbUser = await User.findOne({ userId: { $regex: senderJid.split("@")[0].split(":")[0] } });
+
+          if (!dbUser) {
+            return safeSend(sock, senderJid, {
+              text: `❌ _You're not registered in the group yet. Join the group first!_`,
+            });
+          }
+
+          const streak = dbUser.streak || 0;
+          const streakBadge = streak >= 7 ? `🔥` : streak >= 3 ? `⚡` : `📅`;
+          const totalFine = dbUser.fine || 0;
+          const monthSubs = dbUser.monthlySubmissions || 0;
+          const scores = dbUser.feedbackScores || [];
+
+          // Compute averages from last 30 feedback entries
+          let avgLine = `_No feedback scores yet — submit a video to get scored!_`;
+          if (scores.length > 0) {
+            const avg = (key) => {
+              const vals = scores.map(s => s[key]).filter(v => v != null);
+              return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : "—";
+            };
+            avgLine =
+              `🗣️ *Fluency:*    ${avg("fluency")}/10\n` +
+              `📚 *Grammar:*    ${avg("grammar")}/10\n` +
+              `🔥 *Confidence:* ${avg("confidence")}/10\n` +
+              `🧠 *Vocabulary:* ${avg("vocabulary")}/10\n` +
+              `_(avg over last ${scores.length} submission${scores.length > 1 ? "s" : ""})_`;
+          }
+
+          const name = dbUser.name || senderJid.split("@")[0].split(":")[0];
+
+          const statsMsg =
+            `╔══════════════════╗\n` +
+            `📊 *MY STATS*\n` +
+            `╚══════════════════╝\n\n` +
+            `👤 *${name}*\n` +
+            `━━━━━━━━━━━━━━━\n` +
+            `${streakBadge} *Current Streak:* ${streak} day${streak !== 1 ? "s" : ""}\n` +
+            `💸 *Total Fine:* ₹${totalFine}\n` +
+            `📅 *Submitted This Month:* ${monthSubs} day${monthSubs !== 1 ? "s" : ""}\n` +
+            `━━━━━━━━━━━━━━━\n` +
+            `📈 *Avg Feedback Scores:*\n` +
+            `${avgLine}\n` +
+            `━━━━━━━━━━━━━━━\n` +
+            `💪 _Keep submitting daily to improve your scores!_`;
+
+          return safeSend(sock, senderJid, { text: statsMsg });
+        }
+
         return;
       }
 
@@ -1645,24 +1722,60 @@ async function startBot() {
       }
 
       if (cmd === "/mystats") {
-        const stats = await UserStats.findOne({ userId: dbUser, groupId: chatId });
+        const userRecord = await User.findOne({ userId: dbUser });
+        const senderPhone = dbUser.split("@")[0].split(":")[0];
+        const senderDmJid = `${senderPhone}@s.whatsapp.net`;
 
-        if (!stats || stats.totalCorrections === 0) {
+        if (!userRecord) {
           return safeSend(sock, chatId, {
-            text: `📊 *Your English Stats*\n\n` +
-              `@${getName(dbUser)}, you haven't received any corrections yet!\n\n` +
-              `💬 Keep chatting in English to get feedback.`,
+            text: `❌ @${senderPhone} _You're not registered yet._`,
             mentions: [dbUser],
           });
         }
 
+        const streak = userRecord.streak || 0;
+        const streakBadge = streak >= 7 ? `🔥` : streak >= 3 ? `⚡` : `📅`;
+        const totalFine = userRecord.fine || 0;
+        const monthSubs = userRecord.monthlySubmissions || 0;
+        const scores = userRecord.feedbackScores || [];
+
+        let avgLine = `_No feedback scores yet — submit a video to get scored!_`;
+        if (scores.length > 0) {
+          const avg = (key) => {
+            const vals = scores.map(s => s[key]).filter(v => v != null);
+            return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : "—";
+          };
+          avgLine =
+            `🗣️ *Fluency:*    ${avg("fluency")}/10\n` +
+            `📚 *Grammar:*    ${avg("grammar")}/10\n` +
+            `🔥 *Confidence:* ${avg("confidence")}/10\n` +
+            `🧠 *Vocabulary:* ${avg("vocabulary")}/10\n` +
+            `_(avg over last ${scores.length} submission${scores.length > 1 ? "s" : ""})_`;
+        }
+
+        const name = userRecord.name || senderPhone;
+
+        const statsMsg =
+          `╔══════════════════╗\n` +
+          `📊 *MY STATS*\n` +
+          `╚══════════════════╝\n\n` +
+          `👤 *${name}*\n` +
+          `━━━━━━━━━━━━━━━\n` +
+          `${streakBadge} *Current Streak:* ${streak} day${streak !== 1 ? "s" : ""}\n` +
+          `💸 *Total Fine:* ₹${totalFine}\n` +
+          `📅 *Submitted This Month:* ${monthSubs} day${monthSubs !== 1 ? "s" : ""}\n` +
+          `━━━━━━━━━━━━━━━\n` +
+          `📈 *Avg Feedback Scores:*\n` +
+          `${avgLine}\n` +
+          `━━━━━━━━━━━━━━━\n` +
+          `💪 _Keep submitting daily to improve your scores!_`;
+
+        // Send full stats privately to the user's DM
+        await safeSend(sock, senderDmJid, { text: statsMsg });
+
+        // Acknowledge in group so others know the command was received
         return safeSend(sock, chatId, {
-          text: `📊 *Your English Stats*\n\n` +
-            `👤 @${getName(dbUser)}\n` +
-            `✍️ Total Corrections: ${stats.totalCorrections}\n` +
-            `📈 Grammar Score: ${stats.grammarScore}/100\n` +
-            `🔥 Streak: ${stats.streakDays} days\n\n` +
-            `💪 Keep improving!`,
+          text: `📊 @${senderPhone} _Your stats have been sent to your DM!_ 👆`,
           mentions: [dbUser],
         });
       }
@@ -1790,6 +1903,19 @@ async function startBot() {
         generateFeedback(msg, dbUser, video.seconds || 60, todayStatus?.todayTopic || null, todayStatus?.todayQuestion || null, sock, { onProgress })
           .then((feedbackText) => {
             storeResult(hash, feedbackText);
+
+            // 💾 Parse & save feedback scores for /mystats
+            const scores = parseFeedbackScores(feedbackText);
+            if (scores) {
+              User.updateOne(
+                { userId: dbUser },
+                {
+                  $push: { feedbackScores: { $each: [{ ...scores, date: new Date() }], $slice: -30 } },
+                  $inc: { monthlySubmissions: 1 },
+                }
+              ).catch(() => {});
+            }
+
             const chunks = chunkMessage(feedbackText);
             // Edit the progress message with the first chunk, send rest as new messages
             if (progressMsgKey && chunks.length > 0) {
