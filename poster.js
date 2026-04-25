@@ -3,28 +3,87 @@ import fs from "fs";
 
 // ── Category → theme mapping ──────────────────────────────────────────────
 const THEMES = {
-  "Daily Life":       { primary: "#4ade80", secondary: "#22c55e", accent: "#bbf7d0", bg1: "#020617", bg2: "#0f172a", glow1: "rgba(34,197,94,0.15)",  glow2: "rgba(16,185,129,0.08)",  cardBg: "rgba(20,83,45,0.35)",   cardBorder: "#22c55e" },
-  "Travel":           { primary: "#38bdf8", secondary: "#0ea5e9", accent: "#bae6fd", bg1: "#020c1b", bg2: "#0c1a2e", glow1: "rgba(56,189,248,0.15)", glow2: "rgba(14,165,233,0.08)",  cardBg: "rgba(7,89,133,0.35)",   cardBorder: "#0ea5e9" },
-  "Technology":       { primary: "#a78bfa", secondary: "#7c3aed", accent: "#ddd6fe", bg1: "#0d0117", bg2: "#1a0533", glow1: "rgba(167,139,250,0.15)",glow2: "rgba(124,58,237,0.08)",  cardBg: "rgba(76,29,149,0.35)",  cardBorder: "#7c3aed" },
-  "Food":             { primary: "#fb923c", secondary: "#ea580c", accent: "#fed7aa", bg1: "#150800", bg2: "#1c0f00", glow1: "rgba(251,146,60,0.15)", glow2: "rgba(234,88,12,0.08)",   cardBg: "rgba(124,45,18,0.35)",  cardBorder: "#ea580c" },
-  "Health":           { primary: "#34d399", secondary: "#059669", accent: "#a7f3d0", bg1: "#011208", bg2: "#022c16", glow1: "rgba(52,211,153,0.15)", glow2: "rgba(5,150,105,0.08)",   cardBg: "rgba(6,78,59,0.35)",    cardBorder: "#059669" },
-  "Education":        { primary: "#fbbf24", secondary: "#d97706", accent: "#fde68a", bg1: "#120c00", bg2: "#1c1200", glow1: "rgba(251,191,36,0.15)", glow2: "rgba(217,119,6,0.08)",   cardBg: "rgba(120,53,15,0.35)",  cardBorder: "#d97706" },
-  "Work":             { primary: "#60a5fa", secondary: "#2563eb", accent: "#bfdbfe", bg1: "#020b1a", bg2: "#0a1628", glow1: "rgba(96,165,250,0.15)", glow2: "rgba(37,99,235,0.08)",   cardBg: "rgba(30,58,138,0.35)",  cardBorder: "#2563eb" },
-  "Environment":      { primary: "#86efac", secondary: "#16a34a", accent: "#dcfce7", bg1: "#011005", bg2: "#02200a", glow1: "rgba(134,239,172,0.15)",glow2: "rgba(22,163,74,0.08)",   cardBg: "rgba(20,83,45,0.35)",   cardBorder: "#16a34a" },
-  "Culture":          { primary: "#f472b6", secondary: "#db2777", accent: "#fce7f3", bg1: "#150010", bg2: "#200018", glow1: "rgba(244,114,182,0.15)",glow2: "rgba(219,39,119,0.08)",  cardBg: "rgba(131,24,67,0.35)",  cardBorder: "#db2777" },
-  "Sports":           { primary: "#f87171", secondary: "#dc2626", accent: "#fecaca", bg1: "#150000", bg2: "#200000", glow1: "rgba(248,113,113,0.15)",glow2: "rgba(220,38,38,0.08)",   cardBg: "rgba(127,29,29,0.35)",  cardBorder: "#dc2626" },
-  "Business":         { primary: "#94a3b8", secondary: "#475569", accent: "#e2e8f0", bg1: "#050810", bg2: "#0f1520", glow1: "rgba(148,163,184,0.15)",glow2: "rgba(71,85,105,0.08)",   cardBg: "rgba(30,41,59,0.45)",   cardBorder: "#475569" },
-  "Relationships":    { primary: "#fb7185", secondary: "#e11d48", accent: "#ffe4e6", bg1: "#150008", bg2: "#200010", glow1: "rgba(251,113,133,0.15)",glow2: "rgba(225,29,72,0.08)",   cardBg: "rgba(136,19,55,0.35)",  cardBorder: "#e11d48" },
-  "default":          { primary: "#4ade80", secondary: "#22c55e", accent: "#bbf7d0", bg1: "#020617", bg2: "#0f172a", glow1: "rgba(34,197,94,0.15)",  glow2: "rgba(59,130,246,0.08)",  cardBg: "rgba(20,83,45,0.35)",   cardBorder: "#22c55e" },
+  // ── Your actual DB categories ──
+  "Daily Life":         { primary: "#4ade80", secondary: "#22c55e", accent: "#bbf7d0", bg1: "#020617", bg2: "#0f172a", glow1: "rgba(34,197,94,0.15)",  glow2: "rgba(16,185,129,0.08)",  cardBg: "rgba(20,83,45,0.35)",   cardBorder: "#22c55e" },
+  "English Growth":     { primary: "#fbbf24", secondary: "#d97706", accent: "#fde68a", bg1: "#120c00", bg2: "#1c1200", glow1: "rgba(251,191,36,0.15)", glow2: "rgba(217,119,6,0.08)",   cardBg: "rgba(120,53,15,0.35)",  cardBorder: "#d97706" },
+  "Free Talk":          { primary: "#38bdf8", secondary: "#0ea5e9", accent: "#bae6fd", bg1: "#020c1b", bg2: "#0c1a2e", glow1: "rgba(56,189,248,0.15)", glow2: "rgba(14,165,233,0.08)",  cardBg: "rgba(7,89,133,0.35)",   cardBorder: "#0ea5e9" },
+  "Fun Topic":          { primary: "#fb923c", secondary: "#ea580c", accent: "#fed7aa", bg1: "#150800", bg2: "#1c0f00", glow1: "rgba(251,146,60,0.15)", glow2: "rgba(234,88,12,0.08)",   cardBg: "rgba(124,45,18,0.35)",  cardBorder: "#ea580c" },
+  "Future Goals":       { primary: "#c084fc", secondary: "#9333ea", accent: "#f3e8ff", bg1: "#0e0118", bg2: "#1a0530", glow1: "rgba(192,132,252,0.15)",glow2: "rgba(147,51,234,0.08)",  cardBg: "rgba(88,28,135,0.35)",  cardBorder: "#9333ea" },
+  "Opinion":            { primary: "#f472b6", secondary: "#db2777", accent: "#fce7f3", bg1: "#150010", bg2: "#200018", glow1: "rgba(244,114,182,0.15)",glow2: "rgba(219,39,119,0.08)",  cardBg: "rgba(131,24,67,0.35)",  cardBorder: "#db2777" },
+  "Personal Experience":{ primary: "#fb7185", secondary: "#e11d48", accent: "#ffe4e6", bg1: "#150008", bg2: "#200010", glow1: "rgba(251,113,133,0.15)",glow2: "rgba(225,29,72,0.08)",   cardBg: "rgba(136,19,55,0.35)",  cardBorder: "#e11d48" },
+
+  // ── Extra common categories ──
+  "Travel":             { primary: "#38bdf8", secondary: "#0ea5e9", accent: "#bae6fd", bg1: "#020c1b", bg2: "#0c1a2e", glow1: "rgba(56,189,248,0.15)", glow2: "rgba(14,165,233,0.08)",  cardBg: "rgba(7,89,133,0.35)",   cardBorder: "#0ea5e9" },
+  "Technology":         { primary: "#a78bfa", secondary: "#7c3aed", accent: "#ddd6fe", bg1: "#0d0117", bg2: "#1a0533", glow1: "rgba(167,139,250,0.15)",glow2: "rgba(124,58,237,0.08)",  cardBg: "rgba(76,29,149,0.35)",  cardBorder: "#7c3aed" },
+  "Food":               { primary: "#fb923c", secondary: "#ea580c", accent: "#fed7aa", bg1: "#150800", bg2: "#1c0f00", glow1: "rgba(251,146,60,0.15)", glow2: "rgba(234,88,12,0.08)",   cardBg: "rgba(124,45,18,0.35)",  cardBorder: "#ea580c" },
+  "Health":             { primary: "#34d399", secondary: "#059669", accent: "#a7f3d0", bg1: "#011208", bg2: "#022c16", glow1: "rgba(52,211,153,0.15)", glow2: "rgba(5,150,105,0.08)",   cardBg: "rgba(6,78,59,0.35)",    cardBorder: "#059669" },
+  "Work":               { primary: "#60a5fa", secondary: "#2563eb", accent: "#bfdbfe", bg1: "#020b1a", bg2: "#0a1628", glow1: "rgba(96,165,250,0.15)", glow2: "rgba(37,99,235,0.08)",   cardBg: "rgba(30,58,138,0.35)",  cardBorder: "#2563eb" },
+  "default":            { primary: "#4ade80", secondary: "#22c55e", accent: "#bbf7d0", bg1: "#020617", bg2: "#0f172a", glow1: "rgba(34,197,94,0.15)",  glow2: "rgba(59,130,246,0.08)",  cardBg: "rgba(20,83,45,0.35)",   cardBorder: "#22c55e" },
 };
+
+// Keyword → theme key for fuzzy fallback
+const KEYWORD_MAP = [
+  { keywords: ["daily", "routine", "life", "morning", "evening", "day"],          theme: "Daily Life" },
+  { keywords: ["english", "grammar", "language", "vocab", "speak", "growth"],     theme: "English Growth" },
+  { keywords: ["free", "talk", "chat", "casual", "conversation"],                 theme: "Free Talk" },
+  { keywords: ["fun", "funny", "humor", "joke", "entertain", "interesting"],      theme: "Fun Topic" },
+  { keywords: ["future", "goal", "dream", "plan", "ambition", "career"],          theme: "Future Goals" },
+  { keywords: ["opinion", "think", "view", "perspective", "believe", "feel"],     theme: "Opinion" },
+  { keywords: ["personal", "experience", "story", "memory", "moment", "life"],    theme: "Personal Experience" },
+  { keywords: ["travel", "trip", "journey", "country", "place", "visit"],         theme: "Travel" },
+  { keywords: ["tech", "technology", "ai", "internet", "digital", "app"],         theme: "Technology" },
+  { keywords: ["food", "eat", "cook", "meal", "recipe", "restaurant"],            theme: "Food" },
+  { keywords: ["health", "fitness", "exercise", "mental", "wellness"],            theme: "Health" },
+  { keywords: ["work", "job", "office", "profession", "business"],                theme: "Work" },
+];
 
 function getTheme(category) {
   if (!category) return THEMES.default;
-  const key = Object.keys(THEMES).find(k =>
-    k.toLowerCase() === category.toLowerCase() ||
-    category.toLowerCase().includes(k.toLowerCase())
+  const cat = category.toLowerCase().trim();
+
+  // 1. Exact match
+  const exactKey = Object.keys(THEMES).find(k => k.toLowerCase() === cat);
+  if (exactKey) return THEMES[exactKey];
+
+  // 2. Partial match — theme key is contained in category or vice versa
+  const partialKey = Object.keys(THEMES).find(k =>
+    k !== "default" && (cat.includes(k.toLowerCase()) || k.toLowerCase().includes(cat))
   );
-  return THEMES[key] || THEMES.default;
+  if (partialKey) return THEMES[partialKey];
+
+  // 3. Keyword match — check category against keyword lists
+  for (const { keywords, theme } of KEYWORD_MAP) {
+    if (keywords.some(kw => cat.includes(kw))) return THEMES[theme];
+  }
+
+  // 4. Fallback — generate a deterministic color from the category string
+  //    so every unknown category still gets a unique non-green theme
+  return generateDynamicTheme(category);
+}
+
+// Generates a unique theme for any unknown category using its name as a seed
+function generateDynamicTheme(category) {
+  // Hash the category string to a hue value 0-360
+  let hash = 0;
+  for (let i = 0; i < category.length; i++) {
+    hash = (hash * 31 + category.charCodeAt(i)) & 0xffffffff;
+  }
+  const hue = Math.abs(hash) % 360;
+
+  const hsl = (h, s, l) => `hsl(${h},${s}%,${l}%)`;
+  const hsla = (h, s, l, a) => `hsla(${h},${s}%,${l}%,${a})`;
+
+  return {
+    primary:    hsl(hue, 80, 65),
+    secondary:  hsl(hue, 75, 50),
+    accent:     hsl(hue, 80, 90),
+    bg1:        hsl(hue, 40, 4),
+    bg2:        hsl(hue, 35, 8),
+    glow1:      hsla(hue, 70, 55, 0.15),
+    glow2:      hsla(hue, 60, 45, 0.08),
+    cardBg:     hsla(hue, 60, 20, 0.35),
+    cardBorder: hsl(hue, 70, 50),
+  };
 }
 
 // ── Text measurement helpers ──────────────────────────────────────────────
