@@ -46,8 +46,9 @@ export async function extractAudio(videoPath, id) {
         if (err) return reject(err);
 
         // Run quality check after extraction
+        let quality = null;
         try {
-          const quality = await checkAudioQuality(audioPath);
+          quality = await checkAudioQuality(audioPath);
           if (quality) {
             console.log(`🔊 Audio quality: mean=${quality.meanVolume}dB max=${quality.maxVolume}dB`);
             if (quality.meanVolume < MIN_VOLUME_DB) {
