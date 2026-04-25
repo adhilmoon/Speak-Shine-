@@ -2,8 +2,8 @@
 import fetch from "node-fetch";
 import { getVisionKey, markKeyExhausted, parseRetryAfter, keyStatus } from "./groqKeyManager.js";
 
-const FRAME_COUNT = 8;
-const GROQ_BATCH_LIMIT = 4; // split 8 frames into 2 batches of 4 (well under the 5-image limit)
+const FRAME_COUNT = 16;
+const GROQ_BATCH_LIMIT = 4; // 16 frames → 4 batches of 4, all run in parallel via Promise.all
 
 /** Formats seconds as m:ss (e.g. 75 → "1:15") */
 function formatSec(s) {
