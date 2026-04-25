@@ -1,6 +1,4 @@
 ﻿import { exec } from "child_process";
-import fs from "fs";
-import path from "path";
 import fetch from "node-fetch";
 import { getVisionKey, markKeyExhausted, parseRetryAfter, keyStatus } from "./groqKeyManager.js";
 
@@ -28,20 +26,17 @@ function getVideoDuration(videoPath) {
 }
 
 /**
- * Extracts a single frame to a temp file and returns { framePath, timestamp, frameIndex }.
- * Returns null if extraction fails.
+ * Extracts a single frame into memory and returns { base64, timestamp, frameIndex }.
+ * Returns null if extraction fails. No disk I/O — ffmpeg pipes directly to stdout.
  */
-async function extractFrame(videoPath, timestamp, frameIndex, tmpDir) {
-  const framePath = path.join(tmpDir, `frame_${frameIndex}_${timestamp}.jpg`);
+async function extractFrame(videoPath, timestamp, frameIndex) {
   return new Promise((resolve) => {
     exec(
-      `ffmpeg -ss ${timestamp} -i "${videoPath}" -frames:v 1 -q:v 3 -vf "scale=640:-1" "${framePath}" -y`,
-      (err) => {
-        if (err) return resolve(null);
-        if (!fs.existsSync(framePath)) return resolve(null);
-        const size = fs.statSync(framePath).size;
-        if (size < 1000) { fs.unlinkSync(framePath); return resolve(null); }
-        resolve({ framePath, timestamp, frameIndex });
+      `ffmpeg -ss ${timestamp} -i "${videoPath}" -frames:v 1 -q:v 3 -vf "scale=640:-1" -f image2 pipe:1`,
+      { encoding: "buffer", maxBuffer: 5 * 1024 * 1024 },
+      (err, stdout) => {
+        if (err || !stdout || stdout.length < 1000) return resolve(null);
+        resolve({ base64: stdout.toString("base64"), timestamp, frameIndex });
       }
     );
   });
@@ -49,12 +44,11 @@ async function extractFrame(videoPath, timestamp, frameIndex, tmpDir) {
 
 /**
  * Extracts FRAME_COUNT frames spaced evenly by video duration.
- * Returns array of { framePath, timestamp, frameIndex } objects.
- * All frames are written to tmpDir as JPEG files.
+ * Returns array of { base64, timestamp, frameIndex } objects — fully in-memory.
  */
-async function extractFrames(videoPath, tmpDir) {
-  if (!fs.existsSync(videoPath)) throw new Error(`Video file not found: ${videoPath}`);
-  fs.mkdirSync(tmpDir, { recursive: true });
+async function extractFrames(videoPath) {
+  const { existsSync } = await import("fs");
+  if (!existsSync(videoPath)) throw new Error(`Video file not found: ${videoPath}`);
 
   const duration = await getVideoDuration(videoPath);
   const timestamps = [];
@@ -64,34 +58,11 @@ async function extractFrames(videoPath, tmpDir) {
 
   console.log(`[Visual] duration=${duration}s, interval=${(duration / FRAME_COUNT).toFixed(1)}s, timestamps=[${timestamps.join(", ")}]`);
 
-  // Extract all frames in parallel
   const results = await Promise.all(
-    timestamps.map((ts, i) => extractFrame(videoPath, ts, i, tmpDir))
+    timestamps.map((ts, i) => extractFrame(videoPath, ts, i))
   );
 
   return results.filter(Boolean);
-}
-
-/**
- * Reads a frame file as base64, then immediately deletes it to free disk space.
- */
-function readAndDeleteFrame(framePath) {
-  try {
-    const base64 = fs.readFileSync(framePath).toString("base64");
-    fs.unlinkSync(framePath);
-    return base64;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Cleans up all remaining frame files in tmpDir.
- */
-function cleanupFrames(frames) {
-  for (const f of frames) {
-    try { if (fs.existsSync(f.framePath)) fs.unlinkSync(f.framePath); } catch {}
-  }
 }
 
 /**
@@ -112,11 +83,10 @@ Do NOT reference frame numbers in your notes — describe what you see naturally
 Return ONLY valid JSON (no markdown, no extra text):
 {"eyeContact":<1-10>,"bodyLanguage":<1-10>,"facialExpression":<1-10>,"overallPresence":<1-10>,"eyeContactNote":"<observation>","bodyLanguageNote":"<observation>","expressionNote":"<observation>","visualSuggestions":["<tip>","<tip>"],"visualStrengths":["<positive>"]}`;
 
-  // Read frames from disk and build request content — delete each file immediately after reading
+  // Frames are already in memory as base64 — no disk reads needed
   const imageContent = frames.map((f) => {
-    const base64 = readAndDeleteFrame(f.framePath);
-    if (!base64) return null;
-    return { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64}` } };
+    if (!f.base64) return null;
+    return { type: "image_url", image_url: { url: `data:image/jpeg;base64,${f.base64}` } };
   }).filter(Boolean);
 
   if (imageContent.length === 0) {
@@ -313,12 +283,9 @@ export async function analyzeVideo(videoPath) {
   const initialKey = getVisionKey();
   if (!initialKey) { console.log(`[Visual] No Groq API keys configured (${keyStatus()})`); return null; }
 
-  // Use a unique temp directory per video — cleaned up at the end
-  const tmpDir = path.resolve(`./tmp/frames_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
-
   let frames = [];
   try {
-    frames = await extractFrames(videoPath, tmpDir);
+    frames = await extractFrames(videoPath);
   } catch (err) {
     console.log("Visual frame extraction error:", err.message);
     return null;
@@ -329,53 +296,46 @@ export async function analyzeVideo(videoPath) {
     return null;
   }
 
-  try {
-    console.log(`[Visual] ${frames.length} frames extracted, splitting into batches of ${GROQ_BATCH_LIMIT}`);
+  console.log(`[Visual] ${frames.length} frames extracted in memory, splitting into batches of ${GROQ_BATCH_LIMIT}`);
 
-    // Split into batches
-    const batches = [];
-    for (let i = 0; i < frames.length; i += GROQ_BATCH_LIMIT) {
-      batches.push(frames.slice(i, i + GROQ_BATCH_LIMIT));
-    }
-
-    const batchResults = await Promise.all(
-      batches.map((batch, idx) => {
-        const startSec = batch[0]?.timestamp ?? null;
-        const endSec = batch[batch.length - 1]?.timestamp ?? null;
-        return analyzeFrameBatch(
-          batch,
-          `batch${idx + 1}/${batches.length}`,
-          { index: idx, total: batches.length, startSec, endSec }
-        );
-      })
-    );
-
-    // Merge all batch results
-    const merged = batchResults.reduce((acc, result) => mergeBatchResults(acc, result), null);
-
-    if (!merged) {
-      console.log("[Visual] All batches failed");
-      return null;
-    }
-
-    // Validation pass — skip reconciliation if all scores are within threshold
-    const validBatchResults = batchResults.filter(Boolean);
-    let validated;
-    if (validBatchResults.length >= 2 && !scoresAreClose(validBatchResults)) {
-      console.log("[Visual] scores diverge — running reconciliation");
-      validated = await validateAndReconcile(validBatchResults, merged);
-    } else {
-      if (validBatchResults.length >= 2) console.log("[Visual] scores are close — skipping reconciliation");
-      validated = merged;
-    }
-
-    const final = validated ?? merged;
-    console.log("Visual analysis complete:", JSON.stringify(final).slice(0, 150));
-    return final;
-
-  } finally {
-    // Always clean up remaining frame files and temp dir
-    cleanupFrames(frames);
-    try { fs.rmdirSync(tmpDir); } catch {}
+  // Split into batches
+  const batches = [];
+  for (let i = 0; i < frames.length; i += GROQ_BATCH_LIMIT) {
+    batches.push(frames.slice(i, i + GROQ_BATCH_LIMIT));
   }
+
+  const batchResults = await Promise.all(
+    batches.map((batch, idx) => {
+      const startSec = batch[0]?.timestamp ?? null;
+      const endSec = batch[batch.length - 1]?.timestamp ?? null;
+      return analyzeFrameBatch(
+        batch,
+        `batch${idx + 1}/${batches.length}`,
+        { index: idx, total: batches.length, startSec, endSec }
+      );
+    })
+  );
+
+  // Merge all batch results
+  const merged = batchResults.reduce((acc, result) => mergeBatchResults(acc, result), null);
+
+  if (!merged) {
+    console.log("[Visual] All batches failed");
+    return null;
+  }
+
+  // Validation pass — skip reconciliation if all scores are within threshold
+  const validBatchResults = batchResults.filter(Boolean);
+  let validated;
+  if (validBatchResults.length >= 2 && !scoresAreClose(validBatchResults)) {
+    console.log("[Visual] scores diverge — running reconciliation");
+    validated = await validateAndReconcile(validBatchResults, merged);
+  } else {
+    if (validBatchResults.length >= 2) console.log("[Visual] scores are close — skipping reconciliation");
+    validated = merged;
+  }
+
+  const final = validated ?? merged;
+  console.log("Visual analysis complete:", JSON.stringify(final).slice(0, 150));
+  return final;
 }
