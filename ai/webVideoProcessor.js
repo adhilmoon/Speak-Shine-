@@ -95,9 +95,18 @@ function getVideoDuration(videoPath) {
     const cmd = `ffprobe -v quiet -print_format json -show_format -show_streams "${videoPath}"`;
 
     exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
-      if (err || !stdout) {
-        console.error("[ffprobe] failed:", stderr || err?.message);
-        return reject(new Error("Could not read video duration. Please ensure the file is a valid video."));
+      if (err || !stdout?.trim()) {
+        const fallback = `ffmpeg -i "${videoPath}" 2>&1 | grep Duration`;
+        exec(fallback, { timeout: 15000 }, (err2, out2) => {
+          const match = (out2 || "").match(/Duration:\s*(\d+):(\d+):(\d+)/);
+          if (match) {
+            const secs = parseInt(match[1]) * 3600 + parseInt(match[2]) * 60 + parseInt(match[3]);
+            if (secs > 0) return resolve(secs);
+          }
+          console.error("[ffprobe] failed:", stderr || err?.message);
+          return reject(new Error("Could not read video duration. Please ensure the file is a valid video."));
+        });
+        return;
       }
 
       try {
