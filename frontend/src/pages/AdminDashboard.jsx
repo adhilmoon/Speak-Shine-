@@ -88,7 +88,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div className="stat-grid">
         <StatCard icon="👥" label="Total Users"     value={dashboard?.stats?.total||0}     color="#7c6fff"/>
         <StatCard icon="✅" label="Submitted Today" value={dashboard?.stats?.completed||0} color="#4ade80"/>
         <StatCard icon="❌" label="Pending Today"   value={dashboard?.stats?.pending||0}   color="#f87171"/>
@@ -96,7 +96,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1.5 flex-wrap mb-6">
+      <div className="tab-bar">
         {TABS.map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)}
             className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${tab===t.id?"bg-[#7c6fff] text-white":"bg-[#16162a] border border-[#252545] text-[#8888aa] hover:text-[#e8e8f4] hover:border-[#353560]"}`}>
@@ -272,7 +272,7 @@ export default function AdminDashboard() {
       {/* FINES */}
       {tab==="fines" && (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+          <div className="stat-grid">
             <StatCard icon="💸" label="Total Outstanding" value={`₹${users.reduce((s,u)=>s+(u.fine||0),0)}`} color="#f87171"/>
             <StatCard icon="⚠️" label="Users with Fines"  value={users.filter(u=>(u.fine||0)>0).length}      color="#fbbf24"/>
             <StatCard icon="✅" label="Fine-Free Users"   value={users.filter(u=>(u.fine||0)===0).length}    color="#4ade80"/>
@@ -377,3 +377,5 @@ export default function AdminDashboard() {
     </Layout>
   );
 }
+
+

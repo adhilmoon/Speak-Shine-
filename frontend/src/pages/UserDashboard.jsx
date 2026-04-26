@@ -107,7 +107,7 @@ export default function UserDashboard() {
       )}
 
       {/* Personal stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div className="stat-grid">
         <StatCard icon="🔥" label="Current Streak"    value={`${profile?.streak || 0} days`}        color="#f97316" />
         <StatCard icon="💸" label="Total Fine"         value={`₹${profile?.fine || 0}`}              color="#f87171" />
         <StatCard icon="📹" label="Total Sessions"     value={scores.length}                          color="#7c6fff" />
@@ -115,7 +115,7 @@ export default function UserDashboard() {
       </div>
 
       {/* Group stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div className="stat-grid">
         <StatCard icon="👥" label="Group Members"      value={data?.stats?.total || 0}               color="#7c6fff" />
         <StatCard icon="✅" label="Submitted Today"    value={data?.stats?.completed || 0}           color="#4ade80" />
         <StatCard icon="⏳" label="Pending Today"      value={data?.stats?.pending || 0}             color="#f87171" />
@@ -125,7 +125,7 @@ export default function UserDashboard() {
       {scores.length > 0 ? (
         <>
           {/* Avg scores */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+          <div className="stat-grid">
             <StatCard icon="🗣️" label="Avg Fluency"    value={avg("fluency")}    color="#7c6fff" />
             <StatCard icon="📝" label="Avg Grammar"    value={avg("grammar")}    color="#4ade80" />
             <StatCard icon="💪" label="Avg Confidence" value={avg("confidence")} color="#fbbf24" />
@@ -224,3 +224,4 @@ export default function UserDashboard() {
     </Layout>
   );
 }
+

@@ -43,7 +43,7 @@ export default function Layout({ children, title }) {
           </div>
 
           {/* Nav */}
-          <nav className="flex items-center gap-1">
+          <nav className="flex items-center gap-1 mx-4">
             {user?.role === "admin" && (
               <>
                 {navLink("/admin", "Admin")}

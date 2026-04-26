@@ -101,14 +101,14 @@ export default function TrainerDashboard() {
 
   return (
     <Layout title="Trainer Dashboard">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div className="stat-grid">
         <StatCard icon="👥" label="Total Students"  value={dashboard?.stats?.total||0}     color="#7c6fff"/>
         <StatCard icon="✅" label="Submitted Today" value={dashboard?.stats?.completed||0} color="#4ade80"/>
         <StatCard icon="❌" label="Pending Today"   value={dashboard?.stats?.pending||0}   color="#f87171"/>
         <StatCard icon="💸" label="Total Fines"     value={`₹${dashboard?.stats?.totalFines||0}`} color="#fbbf24"/>
       </div>
 
-      <div className="flex gap-1.5 flex-wrap mb-6">
+      <div className="tab-bar">
         {TABS.map(t=>(
           <button key={t.id} onClick={()=>handleTab(t.id)}
             className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${tab===t.id?"bg-[#7c6fff] text-white":"bg-[#16162a] border border-[#252545] text-[#8888aa] hover:text-[#e8e8f4] hover:border-[#353560]"}`}>
@@ -265,13 +265,13 @@ export default function TrainerDashboard() {
       {/* STUDENT DETAIL */}
       {tab==="detail" && selected && (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+          <div className="stat-grid">
             <StatCard icon="🔥" label="Streak"       value={`${selected.streak||0} days`}          color="#f97316"/>
             <StatCard icon="💸" label="Fine"          value={`₹${selected.fine||0}`}               color="#f87171"/>
             <StatCard icon="📹" label="Sessions"      value={selScores.length}                      color="#7c6fff"/>
             <StatCard icon="📅" label="This Week"     value={`${selected.weeklySubmissions||0}/7`}  color="#4ade80"/>
           </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+          <div className="stat-grid">
             {Object.entries(SCORE_COLORS).map(([k,c])=>(
               <StatCard key={k} icon={k==="Fluency"?"🗣️":k==="Grammar"?"📝":k==="Confidence"?"💪":"📚"}
                 label={`Avg ${k}`} value={avg(selScores,k.toLowerCase())??"-"} color={c}/>
@@ -361,3 +361,5 @@ export default function TrainerDashboard() {
     </Layout>
   );
 }
+
+
