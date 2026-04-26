@@ -27,8 +27,8 @@ export async function processWebVideo(videoPath, userId, phone, displayName, onP
     // Get video duration using ffprobe
     const duration = await getVideoDuration(videoPath);
     
-    if (duration < 30) {
-      throw new Error("Video must be at least 30 seconds long");
+    if (duration < 10) {
+      throw new Error("Video must be at least 10 seconds long");
     }
 
     if (duration > 300) {

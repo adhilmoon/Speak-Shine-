@@ -53,9 +53,9 @@ router.post("/upload", authMiddleware, upload.single("video"), async (req, res) 
     // Get video duration
     const duration = await getVideoDuration(videoPath);
     
-    if (duration < 30) {
+    if (duration < 10) {
       fs.unlinkSync(videoPath);
-      return res.status(400).json({ error: "Video must be at least 30 seconds long" });
+      return res.status(400).json({ error: "Video must be at least 10 seconds long" });
     }
 
     if (duration > 300) {
