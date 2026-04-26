@@ -38,29 +38,57 @@ const upload = multer({
  * Upload a video for analysis (web-based submission)
  * Returns a report ID that can be used to check status
  */
-router.post("/upload", authMiddleware, upload.single("video"), async (req, res) => {
+router.post("/upload", authMiddleware, (req, res, next) => {
+  // Handle multer errors explicitly (file too large, wrong type, etc.)
+  upload.single("video")(req, res, (err) => {
+    if (err) {
+      console.error("[VideoUpload] Multer error:", err.message);
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return res.status(400).json({ error: "File too large. Maximum size is 350MB." });
+      }
+      return res.status(400).json({ error: err.message || "File upload failed" });
+    }
+    next();
+  });
+}, async (req, res) => {
   let videoPath = null;
-  
+
   try {
     if (!req.file) {
       return res.status(400).json({ error: "No video file uploaded" });
     }
 
     videoPath = req.file.path;
-    const userId = req.user.id; // from JWT token
+    const userId = req.user.id;
     const phone = req.user.phone;
 
+    console.log(`[VideoUpload] File received: ${req.file.originalname} (${(req.file.size / 1024 / 1024).toFixed(1)}MB) user=${phone}`);
+
+    // Ensure tmp/uploads directory exists
+    const uploadDir = path.dirname(videoPath);
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
     // Get video duration
-    const duration = await getVideoDuration(videoPath);
-    
+    let duration;
+    try {
+      duration = await getVideoDuration(videoPath);
+      console.log(`[VideoUpload] Duration: ${duration}s`);
+    } catch (durationErr) {
+      console.error("[VideoUpload] Duration check failed:", durationErr.message);
+      if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
+      return res.status(400).json({ error: durationErr.message });
+    }
+
     if (duration < 60) {
-      fs.unlinkSync(videoPath);
-      return res.status(400).json({ error: "Video must be at least 1 minute long" });
+      if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
+      return res.status(400).json({ error: `Video is too short (${duration}s). Minimum is 1 minute.` });
     }
 
     if (duration > 300) {
-      fs.unlinkSync(videoPath);
-      return res.status(400).json({ error: "Video must be less than 5 minutes long" });
+      if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
+      return res.status(400).json({ error: `Video is too long (${Math.round(duration/60)}min). Maximum is 5 minutes.` });
     }
 
     // Create a pending report entry
@@ -71,6 +99,8 @@ router.post("/upload", authMiddleware, upload.single("video"), async (req, res) 
       videoDuration: duration,
       status: "processing",
     });
+
+    console.log(`[VideoUpload] Report created: ${report._id}`);
 
     // Start processing in background (don't await)
     processVideoInBackground(report._id, videoPath, duration, userId, phone);
@@ -83,10 +113,8 @@ router.post("/upload", authMiddleware, upload.single("video"), async (req, res) 
     });
 
   } catch (err) {
-    console.error("Video upload error:", err);
-    if (videoPath && fs.existsSync(videoPath)) {
-      fs.unlinkSync(videoPath);
-    }
+    console.error("[VideoUpload] Unexpected error:", err);
+    if (videoPath && fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
     res.status(500).json({ error: err.message || "Failed to upload video" });
   }
 });
@@ -179,22 +207,30 @@ router.delete("/report/:reportId", authMiddleware, async (req, res) => {
 
 /**
  * Get video duration using ffprobe
- * Uses -f lavfi fallback and forces format detection without relying on file extension
+ * Uses JSON output — works without file extension
  */
 function getVideoDuration(videoPath) {
   return new Promise((resolve, reject) => {
-    // Try multiple format probing strategies
     const cmd = `ffprobe -v quiet -print_format json -show_format -show_streams "${videoPath}"`;
 
     exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
-      if (err || !stdout) {
-        console.error("[ffprobe] failed:", stderr || err?.message);
-        return reject(new Error("Could not read video duration. Please ensure the file is a valid video."));
+      if (err || !stdout?.trim()) {
+        // Fallback: try ffmpeg -i to read duration from stderr
+        const fallback = `ffmpeg -i "${videoPath}" 2>&1 | grep Duration`;
+        exec(fallback, { timeout: 15000 }, (err2, out2) => {
+          const match = (out2 || "").match(/Duration:\s*(\d+):(\d+):(\d+)/);
+          if (match) {
+            const secs = parseInt(match[1]) * 3600 + parseInt(match[2]) * 60 + parseInt(match[3]);
+            if (secs > 0) return resolve(secs);
+          }
+          console.error("[ffprobe] failed:", stderr || err?.message);
+          return reject(new Error("Could not read video duration. Please ensure the file is a valid video."));
+        });
+        return;
       }
 
       try {
         const info = JSON.parse(stdout);
-        // Try format duration first, then stream duration
         const dur =
           parseFloat(info?.format?.duration) ||
           parseFloat(info?.streams?.find(s => s.codec_type === "video")?.duration) ||

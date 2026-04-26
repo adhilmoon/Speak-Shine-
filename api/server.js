@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import { connectDB } from "../db.js";
 
@@ -18,8 +19,15 @@ const app = express();
 const PORT = process.env.PORT || process.env.API_PORT || 3001;
 const isProd = process.env.NODE_ENV === "production";
 
+// Ensure tmp/uploads directory exists for video uploads
+const uploadDir = path.join(__dirname, "../tmp/uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+  console.log("📁 Created tmp/uploads directory");
+}
+
 app.use(cors({ origin: "*", credentials: true }));
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 
 // ── API Routes ──────────────────────────────────────────────────────────────
 app.get("/api/health", (_, res) => res.json({ status: "ok", app: "Speak & Shine 🗣️" }));
