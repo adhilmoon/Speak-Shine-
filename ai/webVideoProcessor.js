@@ -194,8 +194,10 @@ function buildStructuredAnalysis(speechResult, visual, qualityWarning) {
  */
 export function getVideoDuration(videoPath) {
   return new Promise((resolve, reject) => {
+    // Use -count_packets to force ffprobe to scan the full file
+    // This fixes webm files recorded by browsers that lack duration in header
     exec(
-      `ffprobe -v quiet -print_format json -show_format -show_streams "${videoPath}"`,
+      `ffprobe -v quiet -print_format json -show_format -show_streams -count_packets "${videoPath}"`,
       { timeout: 30000 },
       (err, stdout, stderr) => {
         if (err || !stdout?.trim()) {
@@ -204,10 +206,23 @@ export function getVideoDuration(videoPath) {
         }
         try {
           const info = JSON.parse(stdout);
-          const dur =
-            parseFloat(info?.format?.duration) ||
-            parseFloat(info?.streams?.find(s => s.codec_type === "video")?.duration) ||
-            0;
+
+          // Try format duration first
+          let dur = parseFloat(info?.format?.duration);
+
+          // Fallback: calculate from nb_read_packets * avg frame duration
+          if (!dur || dur <= 0) {
+            const videoStream = info?.streams?.find(s => s.codec_type === "video");
+            dur = parseFloat(videoStream?.duration) || 0;
+
+            // Last resort: use nb_read_packets and r_frame_rate
+            if (!dur && videoStream?.nb_read_packets && videoStream?.r_frame_rate) {
+              const [num, den] = videoStream.r_frame_rate.split("/").map(Number);
+              const fps = den ? num / den : 0;
+              if (fps > 0) dur = parseInt(videoStream.nb_read_packets) / fps;
+            }
+          }
+
           if (!dur || dur <= 0) return reject(new Error("Could not determine video duration."));
           resolve(Math.round(dur));
         } catch {

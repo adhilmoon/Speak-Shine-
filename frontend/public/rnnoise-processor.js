@@ -22,7 +22,13 @@ class RNNoiseProcessor extends AudioWorkletProcessor {
       if (e.data?.type === "init") {
         try {
           // Instantiate the WASM module from the binary sent by the main thread
-          const result = await WebAssembly.instantiate(e.data.wasmBinary, {});
+          // Provide empty import object with all possible namespaces to avoid import errors
+          const importObject = {
+            a: {},        // @jitsi/rnnoise-wasm uses "a" as import namespace
+            env: {},
+            wasi_snapshot_preview1: {},
+          };
+          const result = await WebAssembly.instantiate(e.data.wasmBinary, importObject);
           this._module = result.instance.exports;
 
           // Allocate input/output buffers on the WASM heap
