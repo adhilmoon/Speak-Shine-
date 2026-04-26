@@ -21,8 +21,6 @@ async function getGeneratePoster() {
   return _generatePoster;
 }
 
-const router = express.Router();
-
 /**
  * If today's question exists but poster image is missing or expired, generate and save it.
  * Returns the status doc (with posterImage populated if generated).
@@ -64,8 +62,6 @@ async function ensurePosterImage(status) {
     return status;
   }
 }
-
-const router = express.Router();
 
 // GET /api/dashboard — today's overview (all roles)
 router.get("/", authMiddleware, async (req, res) => {
