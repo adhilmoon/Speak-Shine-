@@ -249,6 +249,20 @@ router.delete("/report/:reportId", authMiddleware, async (req, res) => {
 
 // ── Background processor ─────────────────────────────────────────────────────
 async function processInBackground(reportId, videoPath, phone, displayName, mimeType = "video/webm") {
+  // Set a timeout for the entire processing (10 minutes max)
+  const processingTimeout = setTimeout(async () => {
+    console.error(`[VideoAnalysis] ${reportId} TIMEOUT after 10 minutes`);
+    try {
+      await VideoReport.findByIdAndUpdate(reportId, {
+        status: "failed",
+        errorMessage: "Processing timeout. Please try again with a shorter video.",
+      });
+      pushProgress(reportId, { status: "failed", error: "Processing timeout" });
+      const client = sseClients.get(String(reportId));
+      if (client) { client.end(); sseClients.delete(String(reportId)); }
+    } catch {}
+  }, 10 * 60 * 1000); // 10 minutes
+
   try {
     console.log(`[VideoAnalysis] Starting ${reportId}`);
 
@@ -309,6 +323,7 @@ async function processInBackground(reportId, videoPath, phone, displayName, mime
 
   } catch (err) {
     console.error(`[VideoAnalysis] ${reportId} failed:`, err.message);
+    console.error(`[VideoAnalysis] ${reportId} stack:`, err.stack);
 
     await VideoReport.findByIdAndUpdate(reportId, {
       status: "failed",
@@ -320,6 +335,9 @@ async function processInBackground(reportId, videoPath, phone, displayName, mime
     if (client) { client.end(); sseClients.delete(String(reportId)); }
 
   } finally {
+    // Clear the timeout
+    clearTimeout(processingTimeout);
+    
     // Always delete the local temp file
     if (videoPath && fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
   }
