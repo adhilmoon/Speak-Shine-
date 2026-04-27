@@ -2219,10 +2219,10 @@ async function startBot() {
   // ================= CONNECTION =================
   let reconnecting = false;
 
-  sock.ev.on("connection.update", ({ connection, qr, lastDisconnect }) => {
+  sock.ev.on("connection.update", async ({ connection, qr, lastDisconnect }) => {
     if (qr) {
       qrcode.generate(qr, { small: true });
-      updateQR(qr); // Send to web endpoint
+      await updateQR(qr); // Send to web endpoint
       console.log('📱 QR Code available at: http://localhost:3001/api/qr');
     }
 
@@ -2273,3 +2273,4 @@ async function startBot() {
 }
 
 startBot();
+
