@@ -218,3 +218,37 @@ export function estimateWait(position) {
   const totalMs = avgMs * position;
   return Math.ceil(totalMs / 60000); // minutes
 }
+
+// ── Startup recovery ─────────────────────────────────────────────────────────
+// On server boot, find any VideoReports stuck in "processing" (from a previous
+// crash) and re-enqueue them from R2 so they complete automatically.
+export async function recoverStuckJobs() {
+  try {
+    const stuck = await VideoReport.find({ status: "processing" }).lean();
+    if (stuck.length === 0) {
+      console.log("[Queue] No stuck jobs to recover");
+      return;
+    }
+
+    console.log(`[Queue] Recovering ${stuck.length} stuck job(s) from previous session…`);
+
+    for (const report of stuck) {
+      if (!report.videoUrl || !report.videoKey) {
+        // No video in R2 — mark as failed, nothing we can do
+        await VideoReport.findByIdAndUpdate(report._id, {
+          status: "failed",
+          errorMessage: "Server restarted before processing could complete. Please re-upload.",
+        });
+        console.log(`[Queue] ${report._id} — no R2 video, marked failed`);
+        continue;
+      }
+
+      // Has R2 video — re-download and re-enqueue
+      console.log(`[Queue] Re-enqueuing ${report._id} from R2…`);
+      enqueueRetry(report._id, report.videoUrl, report.phone, report.uploaderName || report.phone)
+        .catch(err => console.error(`[Queue] Recovery failed for ${report._id}:`, err.message));
+    }
+  } catch (err) {
+    console.error("[Queue] Recovery error:", err.message);
+  }
+}

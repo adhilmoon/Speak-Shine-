@@ -22,6 +22,7 @@ import chatRoutes from "./routes/chat.js";
 import qrRoutes from "./routes/qr.js";
 import dailyReportRoutes from "./routes/dailyReport.js";
 import monitoringRoutes, { setOnlineUsersRef, recordResponseTime } from "./routes/monitoring.js";
+import { recoverStuckJobs } from "./videoQueue.js";
 import { startScheduler } from "./scheduler.js";
 import { startDailyReset } from "./scheduler.js";
 
@@ -285,6 +286,8 @@ connectDB()
     });
     startScheduler();
     startDailyReset();
+    // Recover any jobs that were processing when the server last shut down
+    recoverStuckJobs();
   })
   .catch((err) => {
     console.error("❌ Failed to start server:", err);
