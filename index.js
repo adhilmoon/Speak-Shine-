@@ -43,7 +43,7 @@ const _noisePatterns = [
   "previousCounter", "_chains", "chainKey", "chainType",
   "messageKeys", "indexInfo", "currentRatchet",
   "prekey bundle", "incoming prekey",
-  // libsignal Bad MAC / session decrypt errors — Baileys handles these internally
+  // libsignal Bad MAC / session decrypt errors â€” Baileys handles these internally
   "Bad MAC", "Session error:", "Failed to decrypt message",
   "decryptWithSessions", "doDecryptWhisperMessage", "verifyMAC",
 ];
@@ -79,7 +79,7 @@ const convertToOgg = (input, output) => {
   return new Promise((resolve, reject) => {
     exec(`ffmpeg -i ${input} -c:a libopus -b:a 128k ${output}`, (err) => {
       if (err) {
-        console.log("❌ FFmpeg error:", err);
+        console.log("âŒ FFmpeg error:", err);
         reject(err);
       } else {
         resolve();
@@ -91,7 +91,7 @@ const convertToOgg = (input, output) => {
 // ================= HELPERS =================
 const getName = (userId) => {
   if (!userId || !userId.includes("@")) return "invalid";
-  // Strip device suffix (e.g. "918848096746:10@s.whatsapp.net" → "918848096746")
+  // Strip device suffix (e.g. "918848096746:10@s.whatsapp.net" â†’ "918848096746")
   return userId.split("@")[0].split(":")[0];
 };
 
@@ -104,16 +104,16 @@ const getMentionName = (userRecord) => {
 };
 
 // Returns just the phone number for a proper tappable @mention in WhatsApp.
-// Use this in message text — WhatsApp renders it as the contact's saved name.
+// Use this in message text â€” WhatsApp renders it as the contact's saved name.
 const getMentionPhone = (userRecord) => {
   if (!userRecord?.userId) return "unknown";
   return userRecord.userId.split("@")[0].split(":")[0];
 };
 
 /**
- * Fetches the group participant map: phone → actual JID.
+ * Fetches the group participant map: phone â†’ actual JID.
  * WhatsApp mentions only work with the exact JID from groupMetadata.
- * Cached per call — pass the result around rather than calling multiple times.
+ * Cached per call â€” pass the result around rather than calling multiple times.
  */
 async function getParticipantMap(sock, groupJid) {
   try {
@@ -150,7 +150,7 @@ const safeSend = async (sock, jid, msg) => {
     await sock.sendMessage(jid, msg);
     return true;
   } catch (err) {
-    console.log("❌ Send error:", err);
+    console.log("âŒ Send error:", err);
     return false;
   }
 };
@@ -197,7 +197,7 @@ async function startBot() {
       // ================= NEW USER ADDED =================
       if (data.action === "add") {
         for (const id of data.participants) {
-          // Always store as @s.whatsapp.net — never @lid
+          // Always store as @s.whatsapp.net â€” never @lid
           const normalizedId = id.includes("@lid")
             ? id.replace("@lid", "@s.whatsapp.net")
             : id;
@@ -224,13 +224,13 @@ async function startBot() {
           // Welcome Message
           await safeSend(sock, TARGET_GROUP, {
             text:
-              `🎉 *New Member Added!*\n\n` +
-              `Welcome to the group @${getName(id)} 👋\n\n` +
-              `🔥 Stay active, complete daily speaking challenges, and keep improving every day!`,
+              `ðŸŽ‰ *New Member Added!*\n\n` +
+              `Welcome to the group @${getName(id)} ðŸ‘‹\n\n` +
+              `ðŸ”¥ Stay active, complete daily speaking challenges, and keep improving every day!`,
             mentions: [id],
           });
 
-          console.log(`✅ New member added: ${id}`);
+          console.log(`âœ… New member added: ${id}`);
         }
       }
 
@@ -242,12 +242,12 @@ async function startBot() {
           // Removed Message
           await safeSend(sock, TARGET_GROUP, {
             text:
-              `⚠️ *Member Removed*\n\n` +
+              `âš ï¸ *Member Removed*\n\n` +
               `@${getName(id)} has left or was removed from the group.`,
             mentions: [id],
           });
 
-          console.log(`❌ Member removed: ${id}`);
+          console.log(`âŒ Member removed: ${id}`);
         }
       }
     } catch (error) {
@@ -265,53 +265,53 @@ async function startBot() {
   // ================= DAILY QUESTION =================
   const sendQuestion = async () => {
     try {
-      // Check if already sent today — only block if truly sent, not on failure
+      // Check if already sent today â€” only block if truly sent, not on failure
       const statusCheck = await Status.findOne();
       if (statusCheck?.questionSentToday) {
-        console.log("🚫 Blocked: already sent today");
+        console.log("ðŸš« Blocked: already sent today");
         return;
       }
 
-      // ── Ensure there are questions — generate if needed (blocking) ──────
+      // â”€â”€ Ensure there are questions â€” generate if needed (blocking) â”€â”€â”€â”€â”€â”€
       let count = await Question.countDocuments();
 
       if (count === 0) {
-        console.log("[Questions] Bank empty — generating 14 before sending...");
+        console.log("[Questions] Bank empty â€” generating 14 before sending...");
         await safeSend(sock, OWNER, {
-          text: `🚨 *Question Bank Empty!*\n\n⏳ _Auto-generating 14 new questions…_`,
+          text: `ðŸš¨ *Question Bank Empty!*\n\nâ³ _Auto-generating 14 new questionsâ€¦_`,
         });
         try {
           const { inserted, totalInDb } = await generateAndInsertQuestions(14);
           count = totalInDb;
           await safeSend(sock, OWNER, {
-            text: `✅ *Auto-generated ${inserted.length} questions!*\n📊 Total in DB: ${totalInDb}`,
+            text: `âœ… *Auto-generated ${inserted.length} questions!*\nðŸ“Š Total in DB: ${totalInDb}`,
           });
         } catch (genErr) {
-          console.log("❌ Auto-generate failed:", genErr.message);
+          console.log("âŒ Auto-generate failed:", genErr.message);
           await safeSend(sock, OWNER, {
-            text: `❌ *Auto-generation failed:* _${genErr.message}_`,
+            text: `âŒ *Auto-generation failed:* _${genErr.message}_`,
           });
           return;
         }
       } else if (count <= 7) {
-        // Low stock — refill in background, don't block today's question
-        console.log(`[Questions] Low stock (${count} left) — auto-generating 14 more in background`);
+        // Low stock â€” refill in background, don't block today's question
+        console.log(`[Questions] Low stock (${count} left) â€” auto-generating 14 more in background`);
         generateAndInsertQuestions(14)
           .then(({ inserted, totalInDb }) => {
             console.log(`[Questions] Auto-generated ${inserted.length} questions. Total: ${totalInDb}`);
             safeSend(sock, OWNER, {
-              text: `🔄 *Auto-refill:* Added ${inserted.length} new questions _(${count} were left)_\n📊 Total in DB: ${totalInDb}`,
+              text: `ðŸ”„ *Auto-refill:* Added ${inserted.length} new questions _(${count} were left)_\nðŸ“Š Total in DB: ${totalInDb}`,
             });
           })
           .catch(err => {
-            console.log("❌ Background auto-generate failed:", err.message);
+            console.log("âŒ Background auto-generate failed:", err.message);
             safeSend(sock, OWNER, {
-              text: `⚠️ *Low stock (${count} left)* — auto-refill failed: _${err.message}_`,
+              text: `âš ï¸ *Low stock (${count} left)* â€” auto-refill failed: _${err.message}_`,
             });
           });
       }
 
-      // ── Pick a question ──────────────────────────────────────────────────
+      // â”€â”€ Pick a question â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const statusDoc = await Status.findOne();
       const recentCategories = statusDoc?.recentCategories || [];
 
@@ -332,13 +332,13 @@ async function startBot() {
       }
 
       if (!q || !q.length) {
-        console.log("❌ No question available after generation");
+        console.log("âŒ No question available after generation");
         return;
       }
 
       const question = q[0];
 
-      // ── Generate & send poster ───────────────────────────────────────────
+      // â”€â”€ Generate & send poster â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       let imageBuffer = null;
       try {
         imageBuffer = await generatePoster(question);
@@ -369,7 +369,7 @@ async function startBot() {
           ? [...new Set([...recentCategories, question.category])].slice(-7)
           : recentCategories;
 
-        // ✅ Mark as sent ONLY after successful delivery
+        // âœ… Mark as sent ONLY after successful delivery
         await Status.updateOne({}, {
           $set: {
             questionSentToday: true,
@@ -382,12 +382,12 @@ async function startBot() {
           }
         });
 
-        console.log(`✅ Question sent | Category: ${question.category || "N/A"} | Recent: [${updatedRecent.join(", ")}]`);
+        console.log(`âœ… Question sent | Category: ${question.category || "N/A"} | Recent: [${updatedRecent.join(", ")}]`);
       } else {
-        console.log("❌ Poster send failed — will retry next cron tick");
+        console.log("âŒ Poster send failed â€” will retry next cron tick");
       }
     } catch (err) {
-      console.log("❌ Question error:", err);
+      console.log("âŒ Question error:", err);
     }
   };
 
@@ -399,12 +399,12 @@ async function startBot() {
 
       if (!pending.length) {
         await safeSend(sock, TARGET_GROUP, {
-          text: `🎉 *All Done for Today!*\n\n━━━━━━━━━━━━━━━\n✅ Every member has submitted their video.\n\n🙌 _Amazing effort from the whole team!_ 💪`,
+          text: `ðŸŽ‰ *All Done for Today!*\n\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nâœ… Every member has submitted their video.\n\nðŸ™Œ _Amazing effort from the whole team!_ ðŸ’ª`,
         });
         return;
       }
 
-      // Build phone → actual group JID map from live group metadata
+      // Build phone â†’ actual group JID map from live group metadata
       let participantMap = {};
       try {
         const meta = await sock.groupMetadata(TARGET_GROUP);
@@ -426,24 +426,24 @@ async function startBot() {
       }
       const uniquePending = [...seen.values()];
 
-      let msg = `${title}\n━━━━━━━━━━━━━━━\n\n`;
-      msg += `📌 *${uniquePending.length} member(s) yet to submit:*\n\n`;
+      let msg = `${title}\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n\n`;
+      msg += `ðŸ“Œ *${uniquePending.length} member(s) yet to submit:*\n\n`;
 
       const mentionJids = [];
       uniquePending.forEach((u) => {
         const phone = u.userId.split("@")[0].split(":")[0];
         const actualJid = participantMap[phone] || `${phone}@s.whatsapp.net`;
         mentionJids.push(actualJid);
-        msg += `▪ @${phone}\n`;
+        msg += `â–ª @${phone}\n`;
       });
-      msg += `\n🎬 _Send your 1-min+ speaking video now!_`;
+      msg += `\nðŸŽ¬ _Send your 1-min+ speaking video now!_`;
 
       await safeSend(sock, TARGET_GROUP, {
         text: msg,
         mentions: mentionJids,
       });
     } catch (err) {
-      console.log("❌ Reminder error:", err);
+      console.log("âŒ Reminder error:", err);
     }
   };
 
@@ -453,21 +453,21 @@ async function startBot() {
       const users = await safeDB(() => User.find());
       const pending = users.filter((u) => !u.completed);
 
-      console.log(`📱 DM Reminder: ${pending.length} pending users at ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`);
+      console.log(`ðŸ“± DM Reminder: ${pending.length} pending users at ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`);
 
       if (pending.length === 0) {
-        console.log("✅ No DMs sent - all users completed");
+        console.log("âœ… No DMs sent - all users completed");
         return;
       }
 
       for (const u of pending) {
         await safeSend(sock, u.userId, {
-          text: `⏰ *Hey! Don't forget today's task.*\n\n━━━━━━━━━━━━━━━\n📹 You haven't submitted your speaking video yet.\n\n🕐 _Time is running out — send it before midnight!_ 💪`,
+          text: `â° *Hey! Don't forget today's task.*\n\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nðŸ“¹ You haven't submitted your speaking video yet.\n\nðŸ• _Time is running out â€” send it before midnight!_ ðŸ’ª`,
         });
-        console.log(`📱 DM sent to ${u.name || getName(u.userId)}`);
+        console.log(`ðŸ“± DM sent to ${u.name || getName(u.userId)}`);
       }
     } catch (err) {
-      console.log("❌ DM error:", err);
+      console.log("âŒ DM error:", err);
     }
   };
 
@@ -475,10 +475,10 @@ async function startBot() {
   const sendGoodMorning = async () => {
     try {
       await safeSend(sock, TARGET_GROUP, {
-        text: `🌅 *Good Morning Team!*\n\n━━━━━━━━━━━━━━━\n💪 _New day, new chance to improve!_\n\n🎯 Don't forget today's speaking challenge.\n\n🔥 _Stay consistent. Stay focused._`,
+        text: `ðŸŒ… *Good Morning Team!*\n\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nðŸ’ª _New day, new chance to improve!_\n\nðŸŽ¯ Don't forget today's speaking challenge.\n\nðŸ”¥ _Stay consistent. Stay focused._`,
       });
     } catch (err) {
-      console.log("❌ Good morning error:", err);
+      console.log("âŒ Good morning error:", err);
     }
   };
 
@@ -488,7 +488,7 @@ async function startBot() {
       const users = await safeDB(() => User.find());
       const pending = users.filter((u) => !u.completed);
 
-      console.log(`⏰ Final Warning - Pending: ${pending.length}`);
+      console.log(`â° Final Warning - Pending: ${pending.length}`);
 
       if (!pending.length) return;
 
@@ -498,33 +498,33 @@ async function startBot() {
       const mp3 = `./warning-${id}.mp3`;
       const ogg = `./warning-${id}.ogg`;
 
-      // 🎤 Generate MP3 (ONLY ONCE ✅)
+      // ðŸŽ¤ Generate MP3 (ONLY ONCE âœ…)
       await generateVoice(
         "Final warning. Please submit your speaking video before deadline.",
         mp3,
       );
 
-      // ✅ Check file exists
+      // âœ… Check file exists
       if (!fs.existsSync(mp3)) {
-        console.log("❌ MP3 file missing");
+        console.log("âŒ MP3 file missing");
         return;
       }
 
-      // 🎧 Convert MP3 → OGG
+      // ðŸŽ§ Convert MP3 â†’ OGG
       await convertToOgg(mp3, ogg);
 
-      // ✅ Check OGG exists
+      // âœ… Check OGG exists
       if (!fs.existsSync(ogg)) {
-        console.log("❌ OGG file missing");
+        console.log("âŒ OGG file missing");
         return;
       }
 
-      // 📖 Read OGG
+      // ðŸ“– Read OGG
       const audioBuffer = fs.readFileSync(ogg);
 
-      // 📤 Send text + voice
+      // ðŸ“¤ Send text + voice
       await safeSend(sock, TARGET_GROUP, {
-        text: `🚨 *FINAL WARNING!*\n\n━━━━━━━━━━━━━━━\n⏳ Deadline is almost here!\n\n${pending.map((u) => { const num = u.userId.split("@")[0].split(":")[0]; return `▪ @${num}`; }).join("\n")}\n\n📹 _Submit your speaking video RIGHT NOW or a fine will be applied!_ 💸`,
+        text: `ðŸš¨ *FINAL WARNING!*\n\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nâ³ Deadline is almost here!\n\n${pending.map((u) => { const num = u.userId.split("@")[0].split(":")[0]; return `â–ª @${num}`; }).join("\n")}\n\nðŸ“¹ _Submit your speaking video RIGHT NOW or a fine will be applied!_ ðŸ’¸`,
         mentions: pending.map((u) => resolveJid(u.userId, pMap)),
       });
 
@@ -534,13 +534,13 @@ async function startBot() {
         ptt: true,
       });
 
-      // 🗑 Clean files
+      // ðŸ—‘ Clean files
       fs.unlinkSync(mp3);
       fs.unlinkSync(ogg);
 
-      console.log("🎤 Voice sent");
+      console.log("ðŸŽ¤ Voice sent");
     } catch (err) {
-      console.log("❌ Voice error:", err);
+      console.log("âŒ Voice error:", err);
     }
   };
 
@@ -563,7 +563,7 @@ async function startBot() {
       const completed = filteredUsers.filter((u) => u.completed);
       const pending = filteredUsers.filter((u) => !u.completed);
 
-      console.log(`📊 Report: ${completed.length} submitted, ${pending.length} pending`);
+      console.log(`ðŸ“Š Report: ${completed.length} submitted, ${pending.length} pending`);
 
       // Get actual participant JIDs for proper mentions
       const pMap = await getParticipantMap(sock, TARGET_GROUP);
@@ -586,7 +586,7 @@ async function startBot() {
         await status.save();
       }
 
-      // ── Streak tracking ──────────────────────────────────────────────────
+      // â”€â”€ Streak tracking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       // Increment streak for completed users, reset for pending
       if (completed.length) {
         await User.updateMany(
@@ -603,7 +603,7 @@ async function startBot() {
         pending.forEach((u) => { u.streak = 0; });
       }
 
-      // ── 7-day streak reward: deduct ₹5 from fine ─────────────────────────
+      // â”€â”€ 7-day streak reward: deduct â‚¹5 from fine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const STREAK_REWARD_DAYS = 7;
       const STREAK_REWARD_AMOUNT = 5;
       const streakRewardUsers = completed.filter(u => u.streak > 0 && u.streak % STREAK_REWARD_DAYS === 0);
@@ -620,51 +620,51 @@ async function startBot() {
         if (bulkOps.length > 0) await User.bulkWrite(bulkOps);
       }
 
-      let msg = `╔══════════════════╗
-📊 *DAILY REPORT*
-╚══════════════════╝
+      let msg = `â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+ðŸ“Š *DAILY REPORT*
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-✅ *Submitted:* ${completed.length}
-❌ *Missed:* ${pending.length}
-💸 *Today's Fine Collected:* ₹${totalTodayFine}
-━━━━━━━━━━━━━━━`;
+âœ… *Submitted:* ${completed.length}
+âŒ *Missed:* ${pending.length}
+ðŸ’¸ *Today's Fine Collected:* â‚¹${totalTodayFine}
+â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”`;
 
       if (completed.length) {
-        msg += `\n\n🏅 *Today's Submissions:*\n`;
+        msg += `\n\nðŸ… *Today's Submissions:*\n`;
         completed.forEach((u) => {
           const streak = u.streak || 0;
-          const streakBadge = streak >= 7 ? `🔥` : streak >= 3 ? `⚡` : `📅`;
-          msg += `✅ @${getMentionPhone(u)} ${streakBadge} ${streak} day streak\n`;
+          const streakBadge = streak >= 7 ? `ðŸ”¥` : streak >= 3 ? `âš¡` : `ðŸ“…`;
+          msg += `âœ… @${getMentionPhone(u)} ${streakBadge} ${streak} day streak\n`;
         });
       }
 
       // Streak reward announcement
       if (streakRewardUsers.length > 0) {
-        msg += `\n━━━━━━━━━━━━━━━\n`;
-        msg += `🎁 *7-Day Streak Reward!*\n`;
-        msg += `_Incredible discipline — 7 days straight! As a reward, ₹${STREAK_REWARD_AMOUNT} has been deducted from your fine. Keep going!_ 💪\n\n`;
+        msg += `\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n`;
+        msg += `ðŸŽ *7-Day Streak Reward!*\n`;
+        msg += `_Incredible discipline â€” 7 days straight! As a reward, â‚¹${STREAK_REWARD_AMOUNT} has been deducted from your fine. Keep going!_ ðŸ’ª\n\n`;
         streakRewardUsers.forEach((u) => {
           const deducted = Math.min((u.fine || 0) + STREAK_REWARD_AMOUNT, STREAK_REWARD_AMOUNT);
-          msg += `🏆 @${getMentionPhone(u)} — *${u.streak} day streak!* ₹${deducted} fine removed 🎉\n`;
+          msg += `ðŸ† @${getMentionPhone(u)} â€” *${u.streak} day streak!* â‚¹${deducted} fine removed ðŸŽ‰\n`;
         });
       }
 
       if (pending.length) {
-        msg += `\n━━━━━━━━━━━━━━━\n`;
-        msg += `⚠️ *Missed Today — Fined ₹${FINE_AMOUNT}:*\n`;
+        msg += `\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n`;
+        msg += `âš ï¸ *Missed Today â€” Fined â‚¹${FINE_AMOUNT}:*\n`;
         pending.forEach((u) => {
-          msg += `❌ @${getMentionPhone(u)} _(Total fine: ₹${u.fine})_\n`;
+          msg += `âŒ @${getMentionPhone(u)} _(Total fine: â‚¹${u.fine})_\n`;
         });
-        msg += `\n💡 _Don't let it pile up — submit tomorrow and stay consistent!_`;
+        msg += `\nðŸ’¡ _Don't let it pile up â€” submit tomorrow and stay consistent!_`;
       }
 
       if (!pending.length) {
-        msg += `\n\n🎉 _Everyone submitted today — great work!_ 🙌`;
+        msg += `\n\nðŸŽ‰ _Everyone submitted today â€” great work!_ ðŸ™Œ`;
       }
 
-      msg += `\n━━━━━━━━━━━━━━━
-🔥 _Consistency builds champions._
-💡 _7 days in a row = ₹5 fine reduction. Keep your streak alive!_`;
+      msg += `\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
+ðŸ”¥ _Consistency builds champions._
+ðŸ’¡ _7 days in a row = â‚¹5 fine reduction. Keep your streak alive!_`;
 
       const allMentions = filteredUsers.map((u) => resolveJid(u.userId, pMap)).filter(Boolean);
 
@@ -676,7 +676,7 @@ async function startBot() {
       // NOTE: reset is done separately at 12:00 AM by dailyReset()
 
     } catch (err) {
-      console.log("❌ Report error:", err);
+      console.log("âŒ Report error:", err);
     }
   };
 
@@ -690,22 +690,22 @@ async function startBot() {
       const dayOfWeek = new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata", weekday: "short" });
       if (dayOfWeek === "Sun") {
         await User.updateMany({}, { weeklySubmissions: 0, weeklyFine: 0 });
-        console.log("🔄 Weekly submissions + fines reset (Sunday)");
+        console.log("ðŸ”„ Weekly submissions + fines reset (Sunday)");
       }
 
       // On 1st of month reset monthly submissions
       const dayOfMonth = new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata", day: "numeric" });
       if (dayOfMonth === "1") {
         await User.updateMany({}, { monthlySubmissions: 0 });
-        console.log("🔄 Monthly submissions reset (1st of month)");
+        console.log("ðŸ”„ Monthly submissions reset (1st of month)");
       }
 
       // Reset daily flags
       await resetStatus();
 
-      console.log("🔄 Daily reset done");
+      console.log("ðŸ”„ Daily reset done");
     } catch (err) {
-      console.log("❌ Reset error:", err);
+      console.log("âŒ Reset error:", err);
     }
   };
 
@@ -742,37 +742,37 @@ async function startBot() {
       weekStart.setDate(now.getDate() - 6);
       const fmt = (d) => d.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short" });
 
-      let msg = `╔══════════════════╗\n🏆 *WEEKLY SUMMARY*\n╚══════════════════╝\n\n`;
-      msg += `📅 _Week of ${fmt(weekStart)} – ${fmt(now)}_\n`;
-      msg += `━━━━━━━━━━━━━━━\n\n`;
+      let msg = `â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—\nðŸ† *WEEKLY SUMMARY*\nâ•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n\n`;
+      msg += `ðŸ“… _Week of ${fmt(weekStart)} â€“ ${fmt(now)}_\n`;
+      msg += `â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n\n`;
 
       // Most consistent
-      msg += `🥇 *Most Consistent:*\n`;
-      const medals = ["🥇", "🥈", "🥉"];
+      msg += `ðŸ¥‡ *Most Consistent:*\n`;
+      const medals = ["ðŸ¥‡", "ðŸ¥ˆ", "ðŸ¥‰"];
       sorted.slice(0, 5).forEach((u, i) => {
         const days = u.weeklySubmissions || 0;
-        const badge = days === 7 ? "🔥" : days >= 5 ? "⚡" : days >= 3 ? "💪" : "📅";
-        msg += `${medals[i] || `${i + 1}.`} @${getMentionPhone(u)} — *${days}/7 days* ${badge}\n`;
+        const badge = days === 7 ? "ðŸ”¥" : days >= 5 ? "âš¡" : days >= 3 ? "ðŸ’ª" : "ðŸ“…";
+        msg += `${medals[i] || `${i + 1}.`} @${getMentionPhone(u)} â€” *${days}/7 days* ${badge}\n`;
       });
 
       // Top streaks
       if (topStreaks.length) {
-        msg += `\n🔥 *Top Streaks:*\n`;
+        msg += `\nðŸ”¥ *Top Streaks:*\n`;
         topStreaks.forEach((u) => {
-          msg += `@${getMentionPhone(u)} — ${u.streak} day streak\n`;
+          msg += `@${getMentionPhone(u)} â€” ${u.streak} day streak\n`;
         });
       }
 
-      msg += `\n💸 *Total Fines This Week:* ₹${totalFines}\n`;
-      msg += `━━━━━━━━━━━━━━━\n`;
-      msg += `🎯 _New week starts tomorrow. Stay consistent!_`;
+      msg += `\nðŸ’¸ *Total Fines This Week:* â‚¹${totalFines}\n`;
+      msg += `â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n`;
+      msg += `ðŸŽ¯ _New week starts tomorrow. Stay consistent!_`;
 
       const allMentions = filtered.map((u) => resolveJid(u.userId, pMap)).filter(Boolean);
 
       await safeSend(sock, TARGET_GROUP, { text: msg, mentions: allMentions });
-      console.log("📊 Weekly summary sent");
+      console.log("ðŸ“Š Weekly summary sent");
     } catch (err) {
-      console.log("❌ Weekly summary error:", err);
+      console.log("âŒ Weekly summary error:", err);
     }
   };
 
@@ -845,11 +845,11 @@ async function startBot() {
       if (isOwnerDM && dmVideo) {
         const ownerStatus = await getStatus();
 
-        // Dedup check for owner DM — include sender ID so forwarded videos don't collide
+        // Dedup check for owner DM â€” include sender ID so forwarded videos don't collide
         const ownerHash = hashBuffer(Buffer.from(`${OWNER}:${dmVideo.fileSha256 || dmVideo.mediaKey || msg.key.id}`));
         const ownerCacheEntry = await getCacheEntry(ownerHash);
         if (ownerCacheEntry === 'processing') {
-          safeSend(sock, OWNER, { text: `⏳ _Your video is already being processed! Please wait._` });
+          safeSend(sock, OWNER, { text: `â³ _Your video is already being processed! Please wait._` });
           return;
         }
         if (typeof ownerCacheEntry === 'string') {
@@ -861,7 +861,7 @@ async function startBot() {
         await markProcessing(ownerHash);
 
         const ownerProgressSent = await sock.sendMessage(OWNER, {
-          text: `⏳ _Analysing your video…_`,
+          text: `â³ _Analysing your videoâ€¦_`,
         });
         const ownerProgressMsgKey = ownerProgressSent?.key;
 
@@ -869,7 +869,7 @@ async function startBot() {
           if (!ownerProgressMsgKey) return;
           try {
             await sock.sendMessage(OWNER, {
-              text: `⏳ _${stage}_`,
+              text: `â³ _${stage}_`,
               edit: ownerProgressMsgKey,
             });
           } catch (_) { }
@@ -894,26 +894,26 @@ async function startBot() {
           })
           .catch((err) => {
             evict(ownerHash);
-            console.log("❌ Owner test feedback error:", err.message);
+            console.log("âŒ Owner test feedback error:", err.message);
             if (ownerProgressMsgKey) {
               sock.sendMessage(OWNER, {
-                text: `❌ _Feedback failed: ${err.message}_`,
+                text: `âŒ _Feedback failed: ${err.message}_`,
                 edit: ownerProgressMsgKey,
-              }).catch(() => safeSend(sock, OWNER, { text: `❌ Feedback failed: ${err.message}` }));
+              }).catch(() => safeSend(sock, OWNER, { text: `âŒ Feedback failed: ${err.message}` }));
             } else {
-              safeSend(sock, OWNER, { text: `❌ Feedback failed: ${err.message}` });
+              safeSend(sock, OWNER, { text: `âŒ Feedback failed: ${err.message}` });
             }
           });
         return;
       }
 
       if (chatId !== TARGET_GROUP) {
-        // ── Owner DM text commands ──────────────────────────────────────────
+        // â”€â”€ Owner DM text commands â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if (isOwnerDM && !dmVideo) {
           const ownerCmd = text.trim().toLowerCase();
           console.log(`[OwnerDM] cmd="${ownerCmd}"`);
 
-          // /genq [count] — generate AI questions
+          // /genq [count] â€” generate AI questions
           // Examples: /genq  /genq 14  /genq 21
           if (ownerCmd.startsWith("/genq")) {
             const parts = ownerCmd.split(/\s+/);
@@ -921,23 +921,23 @@ async function startBot() {
             const total = isNaN(count) || count <= 0 ? 7 : count;
 
             await safeSend(sock, OWNER, {
-              text: `🤖 _Generating ${total} new questions… this may take 10-15 seconds._`,
+              text: `ðŸ¤– _Generating ${total} new questionsâ€¦ this may take 10-15 seconds._`,
             });
 
             try {
               const { inserted, skipped, totalInDb } = await generateAndInsertQuestions(total);
 
-              let reply = `✅ *Questions Generated!*\n\n━━━━━━━━━━━━━━━\n`;
-              reply += `📥 *Added:* ${inserted.length} new questions\n`;
-              if (skipped.length > 0) reply += `⚠️ *Skipped:* ${skipped.length} (duplicates/invalid)\n`;
-              reply += `📊 *Total in DB:* ${totalInDb}\n\n`;
+              let reply = `âœ… *Questions Generated!*\n\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n`;
+              reply += `ðŸ“¥ *Added:* ${inserted.length} new questions\n`;
+              if (skipped.length > 0) reply += `âš ï¸ *Skipped:* ${skipped.length} (duplicates/invalid)\n`;
+              reply += `ðŸ“Š *Total in DB:* ${totalInDb}\n\n`;
 
               if (inserted.length > 0) {
-                reply += `📋 *Preview:*\n`;
+                reply += `ðŸ“‹ *Preview:*\n`;
                 inserted.slice(0, 5).forEach((q, i) => {
                   reply += `\n${i + 1}. [${q.category}]\n`;
-                  reply += `   📌 ${q.topic}\n`;
-                  reply += `   ❓ ${q.question}\n`;
+                  reply += `   ðŸ“Œ ${q.topic}\n`;
+                  reply += `   â“ ${q.question}\n`;
                 });
                 if (inserted.length > 5) {
                   reply += `\n_...and ${inserted.length - 5} more_`;
@@ -946,33 +946,33 @@ async function startBot() {
 
               await safeSend(sock, OWNER, { text: reply });
             } catch (err) {
-              console.log("❌ /genq error:", err.message);
+              console.log("âŒ /genq error:", err.message);
               await safeSend(sock, OWNER, {
-                text: `❌ *Question generation failed:*\n_${err.message}_`,
+                text: `âŒ *Question generation failed:*\n_${err.message}_`,
               });
             }
             return;
           }
 
-          // /qcount — show how many questions are left in DB
+          // /qcount â€” show how many questions are left in DB
           if (ownerCmd === "/qcount") {
             const count = await Question.countDocuments();
             await safeSend(sock, OWNER, {
-              text: `📊 *Questions in DB:* ${count}\n\n💡 _Use /genq to add more._`,
+              text: `ðŸ“Š *Questions in DB:* ${count}\n\nðŸ’¡ _Use /genq to add more._`,
             });
             return;
           }
 
-          // /qlist — show all pending questions
+          // /qlist â€” show all pending questions
           if (ownerCmd === "/qlist") {
             const qs = await Question.find().lean();
             if (qs.length === 0) {
-              await safeSend(sock, OWNER, { text: `📭 No questions in DB. Use /genq to generate some.` });
+              await safeSend(sock, OWNER, { text: `ðŸ“­ No questions in DB. Use /genq to generate some.` });
               return;
             }
-            let msg = `📋 *All Questions (${qs.length}):*\n━━━━━━━━━━━━━━━\n`;
+            let msg = `ðŸ“‹ *All Questions (${qs.length}):*\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n`;
             qs.forEach((q, i) => {
-              msg += `\n${i + 1}. [${q.category}]\n📌 ${q.topic}\n❓ ${q.question}\n`;
+              msg += `\n${i + 1}. [${q.category}]\nðŸ“Œ ${q.topic}\nâ“ ${q.question}\n`;
             });
             const chunks = chunkMessage(msg);
             for (const chunk of chunks) {
@@ -981,39 +981,39 @@ async function startBot() {
             return;
           }
 
-          // /humanizedb — rewrite all existing DB questions to sound human
+          // /humanizedb â€” rewrite all existing DB questions to sound human
           if (ownerCmd === "/humanizedb") {
             const total = await Question.countDocuments();
             if (total === 0) {
-              await safeSend(sock, OWNER, { text: `📭 No questions in DB to humanize.` });
+              await safeSend(sock, OWNER, { text: `ðŸ“­ No questions in DB to humanize.` });
               return;
             }
             await safeSend(sock, OWNER, {
-              text: `🤖 *Humanizing ${total} questions...*\n\n⏳ _Detecting AI patterns and rewriting. This may take a minute._`,
+              text: `ðŸ¤– *Humanizing ${total} questions...*\n\nâ³ _Detecting AI patterns and rewriting. This may take a minute._`,
             });
             try {
               const { updated, skipped, total: tot } = await humanizeAllDbQuestions();
               await safeSend(sock, OWNER, {
-                text: `✅ *Humanize Complete!*\n\n━━━━━━━━━━━━━━━\n✍️ *Rewritten:* ${updated}\n⏭️ *Already natural:* ${skipped}\n📊 *Total:* ${tot}`,
+                text: `âœ… *Humanize Complete!*\n\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nâœï¸ *Rewritten:* ${updated}\nâ­ï¸ *Already natural:* ${skipped}\nðŸ“Š *Total:* ${tot}`,
               });
             } catch (err) {
-              await safeSend(sock, OWNER, { text: `❌ *Humanize failed:* _${err.message}_` });
+              await safeSend(sock, OWNER, { text: `âŒ *Humanize failed:* _${err.message}_` });
             }
             return;
           }
 
-          // /clearscore <phone> — clear all feedback scores for a user
+          // /clearscore <phone> â€” clear all feedback scores for a user
           // Example: /clearscore 918848096746
           if (ownerCmd.startsWith("/clearscore")) {
             const parts = ownerCmd.split(/\s+/);
             const phone = parts[1]?.replace(/\D/g, "");
             if (!phone) {
-              await safeSend(sock, OWNER, { text: `❌ Usage: /clearscore <phone>\nExample: /clearscore 918848096746` });
+              await safeSend(sock, OWNER, { text: `âŒ Usage: /clearscore <phone>\nExample: /clearscore 918848096746` });
               return;
             }
             const target = await User.findOne({ userId: { $regex: phone } });
             if (!target) {
-              await safeSend(sock, OWNER, { text: `❌ No user found with phone: ${phone}` });
+              await safeSend(sock, OWNER, { text: `âŒ No user found with phone: ${phone}` });
               return;
             }
             await User.updateOne(
@@ -1022,13 +1022,13 @@ async function startBot() {
             );
             const name = target.name || phone;
             await safeSend(sock, OWNER, {
-              text: `✅ *Scores cleared for ${name}*\n\n_Fluency, Grammar, Confidence, Vocabulary reset to —_`,
+              text: `âœ… *Scores cleared for ${name}*\n\n_Fluency, Grammar, Confidence, Vocabulary reset to â€”_`,
             });
             return;
           }
         }
 
-        // ── Member DM commands (any user) ──────────────────────────────────
+        // â”€â”€ Member DM commands (any user) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         const dmCmd = text.trim().toLowerCase();
 
         if (dmCmd === "/mystats") {
@@ -1037,48 +1037,48 @@ async function startBot() {
 
           if (!dbUser) {
             return safeSend(sock, senderJid, {
-              text: `❌ _You're not registered in the group yet. Join the group first!_`,
+              text: `âŒ _You're not registered in the group yet. Join the group first!_`,
             });
           }
 
           const streak = dbUser.streak || 0;
-          const streakBadge = streak >= 7 ? `🔥` : streak >= 3 ? `⚡` : `📅`;
+          const streakBadge = streak >= 7 ? `ðŸ”¥` : streak >= 3 ? `âš¡` : `ðŸ“…`;
           const totalFine = dbUser.fine || 0;
           const monthSubs = dbUser.monthlySubmissions || 0;
           const scores = dbUser.feedbackScores || [];
 
           // Compute averages from last 30 feedback entries
-          let avgLine = `_No feedback scores yet — submit a video to get scored!_`;
+          let avgLine = `_No feedback scores yet â€” submit a video to get scored!_`;
           if (scores.length > 0) {
             const avg = (key) => {
               const vals = scores.map(s => s[key]).filter(v => v != null);
-              return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : "—";
+              return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : "â€”";
             };
             avgLine =
-              `🗣️ *Fluency:*    ${avg("fluency")}/10\n` +
-              `📚 *Grammar:*    ${avg("grammar")}/10\n` +
-              `🔥 *Confidence:* ${avg("confidence")}/10\n` +
-              `🧠 *Vocabulary:* ${avg("vocabulary")}/10\n` +
+              `ðŸ—£ï¸ *Fluency:*    ${avg("fluency")}/10\n` +
+              `ðŸ“š *Grammar:*    ${avg("grammar")}/10\n` +
+              `ðŸ”¥ *Confidence:* ${avg("confidence")}/10\n` +
+              `ðŸ§  *Vocabulary:* ${avg("vocabulary")}/10\n` +
               `_(avg over last ${scores.length} submission${scores.length > 1 ? "s" : ""})_`;
           }
 
           const name = dbUser.name || senderJid.split("@")[0].split(":")[0];
 
           const statsMsg =
-            `╔══════════════════╗\n` +
-            `📊 *MY STATS*\n` +
-            `╚══════════════════╝\n\n` +
-            `👤 *${name}*\n` +
-            `━━━━━━━━━━━━━━━\n` +
+            `â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—\n` +
+            `ðŸ“Š *MY STATS*\n` +
+            `â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n\n` +
+            `ðŸ‘¤ *${name}*\n` +
+            `â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n` +
             `${streakBadge} *Current Streak:* ${streak} day${streak !== 1 ? "s" : ""}\n` +
-            `💸 *Total Fine:* ₹${totalFine}\n` +
-            `📅 *Submitted This Month:* ${monthSubs} day${monthSubs !== 1 ? "s" : ""}\n` +
-            `📆 *Submitted This Week:* ${dbUser.weeklySubmissions || 0}/7 days\n` +
-            `━━━━━━━━━━━━━━━\n` +
-            `📈 *Avg Feedback Scores:*\n` +
+            `ðŸ’¸ *Total Fine:* â‚¹${totalFine}\n` +
+            `ðŸ“… *Submitted This Month:* ${monthSubs} day${monthSubs !== 1 ? "s" : ""}\n` +
+            `ðŸ“† *Submitted This Week:* ${dbUser.weeklySubmissions || 0}/7 days\n` +
+            `â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n` +
+            `ðŸ“ˆ *Avg Feedback Scores:*\n` +
             `${avgLine}\n` +
-            `━━━━━━━━━━━━━━━\n` +
-            `💪 _Keep submitting daily to improve your scores!_`;
+            `â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n` +
+            `ðŸ’ª _Keep submitting daily to improve your scores!_`;
 
           return safeSend(sock, senderJid, { text: statsMsg });
         }
@@ -1089,7 +1089,7 @@ async function startBot() {
       const user = msg.key.participant || msg.key.remoteJid;
       if (!user) return;
 
-      // For group messages, participant must be set � remoteJid is the group, not the sender
+      // For group messages, participant must be set - remoteJid is the group, not the sender
       // EXCEPT for fromMe messages (bot's own messages) where participant may not be set
       if (chatId.includes("@g.us") && !msg.key.participant && !msg.key.fromMe) return;
 
@@ -1138,7 +1138,7 @@ async function startBot() {
       // Use normalizedUser for all DB operations
       const dbUser = normalizedUser;
 
-      // Save push name whenever we see a message — most reliable way to capture names
+      // Save push name whenever we see a message â€” most reliable way to capture names
       const pushName = msg.pushName || null;
       if (pushName) {
         await User.updateOne(
@@ -1148,21 +1148,21 @@ async function startBot() {
         );
       }
 
-      // 📋 REMAINING
+      // ðŸ“‹ REMAINING
       if (cmd.startsWith("/remaining")) {
         return sendReminder(
-          `⏰ *Remaining*\n\n🗣️ _Don't forget to submit your speaking video today!_`,
+          `â° *Remaining*\n\nðŸ—£ï¸ _Don't forget to submit your speaking video today!_`,
         );
       }
 
-      // 💰 FINE
+      // ðŸ’° FINE
       if (cmd.startsWith("/fine")) {
         const users = await User.find();
 
         // Normalize userId to phone number for dedup comparison
         const getPhone = (id) => id ? id.replace(/@s\.whatsapp\.net|@lid|@c\.us/g, "").split(":")[0] : null;
 
-        // Merge duplicate userIds (same phone, different JID format) — sum fines, prefer @s.whatsapp.net
+        // Merge duplicate userIds (same phone, different JID format) â€” sum fines, prefer @s.whatsapp.net
         const merged = new Map();
         for (const u of users) {
           const phone = getPhone(u.userId);
@@ -1180,16 +1180,16 @@ async function startBot() {
         const pMap = await getParticipantMap(sock, chatId);
 
         let totalFine = 0;
-        let msgText = `╔══════════════════╗\n💰 *FINE REPORT*\n╚══════════════════╝\n\n📋 *Individual Fines:*\n━━━━━━━━━━━━━━━\n`;
+        let msgText = `â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—\nðŸ’° *FINE REPORT*\nâ•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n\nðŸ“‹ *Individual Fines:*\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n`;
 
         uniqueUsers.forEach((u) => {
           const fine = u.fine || 0;
           totalFine += fine;
           const phone = u.userId.split("@")[0].split(":")[0];
-          msgText += `▪️ @${phone} → ₹${fine}\n`;
+          msgText += `â–ªï¸ @${phone} â†’ â‚¹${fine}\n`;
         });
 
-        msgText += `\n━━━━━━━━━━━━━━━\n💵 *Total Fine Pool:* ₹${totalFine}\n\n⚠️ _Missed daily submissions result in fines._\n🔥 _Stay consistent. Avoid penalties._\n`;
+        msgText += `\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nðŸ’µ *Total Fine Pool:* â‚¹${totalFine}\n\nâš ï¸ _Missed daily submissions result in fines._\nðŸ”¥ _Stay consistent. Avoid penalties._\n`;
 
         return safeSend(sock, chatId, {
           text: msgText,
@@ -1197,21 +1197,21 @@ async function startBot() {
         });
       }
 
-      // 🏆 LEADERBOARD
+      // ðŸ† LEADERBOARD
       if (cmd.startsWith("/leaderboard")) {
         const users = await User.find();
         const pMap = await getParticipantMap(sock, chatId);
-        let msgText = `╔══════════════════╗\n🏆  *LEADERBOARD*\n╚══════════════════╝\n\n`;
+        let msgText = `â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—\nðŸ†  *LEADERBOARD*\nâ•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n\n`;
 
         users
           .filter((u) => u.userId)
           .sort((a, b) => b.completed - a.completed)
           .forEach((u, i) => {
-            const medal = ["🥇", "🥈", "🥉"][i] || "🔹";
+            const medal = ["ðŸ¥‡", "ðŸ¥ˆ", "ðŸ¥‰"][i] || "ðŸ”¹";
             const phone = u.userId.split("@")[0].split(":")[0];
-            msgText += `${medal} @${phone} → ${u.completed ? "✅ Done" : "❌ Pending"}\n`;
+            msgText += `${medal} @${phone} â†’ ${u.completed ? "âœ… Done" : "âŒ Pending"}\n`;
           });
-        msgText += `\n━━━━━━━━━━━━━━━\n🔥 _Keep grinding — consistency wins!_`;
+        msgText += `\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nðŸ”¥ _Keep grinding â€” consistency wins!_`;
 
         return safeSend(sock, chatId, {
           text: msgText,
@@ -1219,7 +1219,7 @@ async function startBot() {
         });
       }
 
-      // 📊 STREAK REPORT
+      // ðŸ“Š STREAK REPORT
       if (cmd.startsWith("/report")) {
         const botJid = sock.user?.id?.replace(/:.*@/, "@") ?? "";
         const users = await User.find({ userId: { $exists: true, $nin: [null, ""] } });
@@ -1228,7 +1228,7 @@ async function startBot() {
         const members = users.filter(u => u.userId && !u.userId.includes(botJid.split("@")[0]));
 
         // Get actual participant JIDs from group metadata for correct mention resolution
-        let participantMap = {}; // phone → actual JID
+        let participantMap = {}; // phone â†’ actual JID
         try {
           const meta = await sock.groupMetadata(chatId);
           for (const p of meta.participants) {
@@ -1243,7 +1243,7 @@ async function startBot() {
           return (a.fine || 0) - (b.fine || 0);
         });
 
-        let msgText = `╔══════════════════╗\n📊 *STREAK REPORT*\n╚══════════════════╝\n\n`;
+        let msgText = `â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—\nðŸ“Š *STREAK REPORT*\nâ•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n\n`;
 
         const mentionJids = [];
         sorted.filter(u => u.userId).forEach((u) => {
@@ -1252,16 +1252,16 @@ async function startBot() {
           mentionJids.push(actualJid);
 
           const streak = u.streak || 0;
-          const streakBadge = streak >= 7 ? `🔥` : streak >= 3 ? `⚡` : `📅`;
+          const streakBadge = streak >= 7 ? `ðŸ”¥` : streak >= 3 ? `âš¡` : `ðŸ“…`;
           const fine = u.fine || 0;
-          const status = u.completed ? `✅` : `❌`;
+          const status = u.completed ? `âœ…` : `âŒ`;
           msgText += `${status} @${phone}\n`;
-          msgText += `   ${streakBadge} *${streak} day streak*  |  💸 Fine: ₹${fine}\n\n`;
+          msgText += `   ${streakBadge} *${streak} day streak*  |  ðŸ’¸ Fine: â‚¹${fine}\n\n`;
         });
 
-        msgText += `━━━━━━━━━━━━━━━\n`;
-        msgText += `📅 1-2 days  ⚡ 3-6 days  🔥 7+ days\n`;
-        msgText += `🎁 _Every 7-day streak = ₹5 fine removed!_`;
+        msgText += `â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n`;
+        msgText += `ðŸ“… 1-2 days  âš¡ 3-6 days  ðŸ”¥ 7+ days\n`;
+        msgText += `ðŸŽ _Every 7-day streak = â‚¹5 fine removed!_`;
 
         const chunks = chunkMessage(msgText);
         for (const chunk of chunks) {
@@ -1273,24 +1273,24 @@ async function startBot() {
         return;
       }
 
-      // 🔄 RESET (FULL RESET)
+      // ðŸ”„ RESET (FULL RESET)
       if (cmd.startsWith("/reset") && !cmd.startsWith("/resetday") && !cmd.startsWith("/resetstatus") && !cmd.startsWith("/resetfine")) {
         if (!isAdmin)
           return safeSend(sock, chatId, {
-            text: `❌ *Access Denied*\n_Only admins can use this command._`,
+            text: `âŒ *Access Denied*\n_Only admins can use this command._`,
           });
 
         await User.updateMany({}, { completed: false, fine: 0 });
 
         return safeSend(sock, chatId, {
-          text: `🔄 *Full Reset Done!*\n\n━━━━━━━━━━━━━━━\n✅ All statuses reset to pending\n✅ All fines cleared to ₹0\n\n💡 _Use /resetday or /resetfine for partial resets._`,
+          text: `ðŸ”„ *Full Reset Done!*\n\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nâœ… All statuses reset to pending\nâœ… All fines cleared to â‚¹0\n\nðŸ’¡ _Use /resetday or /resetfine for partial resets._`,
         });
       }
 
       if (cmd.startsWith("/addfine")) {
         if (!isAdmin) {
           return safeSend(sock, chatId, {
-            text: "❌ Only admins can use this command",
+            text: "âŒ Only admins can use this command",
           });
         }
 
@@ -1346,20 +1346,20 @@ async function startBot() {
             { upsert: true }
           );
           const phone = userId.split("@")[0].split(":")[0];
-          results.push(`@${phone} → +₹${amount}`);
+          results.push(`@${phone} â†’ +â‚¹${amount}`);
         }
 
         return safeSend(sock, chatId, {
-          text: `💸 *Fine Added!*\n\n━━━━━━━━━━━━━━━\n${results.join("\n")}\n\n✅ Fines updated successfully.`,
+          text: `ðŸ’¸ *Fine Added!*\n\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n${results.join("\n")}\n\nâœ… Fines updated successfully.`,
           mentions: userAmounts.map(ua => ua.userId), // mentionedJid from WhatsApp = already correct JID
         });
       }
 
-      // 💸 REMOVE FINE
+      // ðŸ’¸ REMOVE FINE
       if (cmd.startsWith("/removefine")) {
         if (!isAdmin) {
           return safeSend(sock, chatId, {
-            text: "❌ Only admins can use this command",
+            text: "âŒ Only admins can use this command",
           });
         }
 
@@ -1415,24 +1415,24 @@ async function startBot() {
           const newFine = Math.max(0, (u.fine || 0) - amount);
           await User.updateOne({ userId: normalizedId }, { fine: newFine });
           const phone = normalizedId.split("@")[0].split(":")[0];
-          results.push(`@${phone} → -₹${amount} (₹${newFine} remaining)`);
+          results.push(`@${phone} â†’ -â‚¹${amount} (â‚¹${newFine} remaining)`);
         }
 
         if (!results.length) {
-          return safeSend(sock, chatId, { text: `❌ No users found.` });
+          return safeSend(sock, chatId, { text: `âŒ No users found.` });
         }
 
         return safeSend(sock, chatId, {
-          text: `💰 *Fine Removed!*\n\n━━━━━━━━━━━━━━━\n${results.join("\n")}\n\n✅ Fines updated successfully.`,
+          text: `ðŸ’° *Fine Removed!*\n\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n${results.join("\n")}\n\nâœ… Fines updated successfully.`,
           mentions: userAmounts.map(ua => ua.userId), // mentionedJid from WhatsApp = already correct JID
         });
       }
 
-      // 🧹 CLEAR SCORE (Admin only) — /clearscore @user or /clearscore @user1 @user2
+      // ðŸ§¹ CLEAR SCORE (Admin only) â€” /clearscore @user or /clearscore @user1 @user2
       if (cmd.startsWith("/clearscore")) {
         if (!isAdmin) {
           return safeSend(sock, chatId, {
-            text: `❌ *Access Denied*\n_Only admins can use this command._`,
+            text: `âŒ *Access Denied*\n_Only admins can use this command._`,
           });
         }
 
@@ -1453,15 +1453,15 @@ async function startBot() {
 
           const u = await User.findOne({ userId: { $regex: phone } });
           if (!u) {
-            results.push(`@${phone} → ❌ not found`);
+            results.push(`@${phone} â†’ âŒ not found`);
             continue;
           }
           await User.updateOne({ _id: u._id }, { $set: { feedbackScores: [] } });
-          results.push(`@${phone} → ✅ scores cleared`);
+          results.push(`@${phone} â†’ âœ… scores cleared`);
         }
 
         return safeSend(sock, chatId, {
-          text: `🧹 *Score Reset*\n\n━━━━━━━━━━━━━━━\n${results.join("\n")}\n\n_Fluency, Grammar, Confidence & Vocabulary history removed._`,
+          text: `ðŸ§¹ *Score Reset*\n\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n${results.join("\n")}\n\n_Fluency, Grammar, Confidence & Vocabulary history removed._`,
           mentions: mentionJids,
         });
       }
@@ -1469,7 +1469,7 @@ async function startBot() {
       if (cmd === "/cleanusers") {
         if (!isAdmin) {
           return safeSend(sock, chatId, {
-            text: "❌ Only admins can use this command",
+            text: "âŒ Only admins can use this command",
           });
         }
 
@@ -1482,37 +1482,37 @@ async function startBot() {
         });
 
         return safeSend(sock, chatId, {
-          text: "🧹 Invalid users cleaned!",
+          text: "ðŸ§¹ Invalid users cleaned!",
         });
       }
 
-      // 🧪 TEST REPORT (Admin only - triggers daily report immediately)
+      // ðŸ§ª TEST REPORT (Admin only - triggers daily report immediately)
       if (cmd === "/testreport") {
-        if (!isAdmin) return safeSend(sock, chatId, { text: `❌ *Access Denied*\n_Only admins can use this command._` });
+        if (!isAdmin) return safeSend(sock, chatId, { text: `âŒ *Access Denied*\n_Only admins can use this command._` });
 
-        await safeSend(sock, chatId, { text: `🧪 _Running test report... (fines will NOT be applied in test mode)_` });
+        await safeSend(sock, chatId, { text: `ðŸ§ª _Running test report... (fines will NOT be applied in test mode)_` });
 
         const users = await User.find({ userId: { $ne: null, $exists: true } });
         const completed = users.filter((u) => u.completed);
         const pending = users.filter((u) => !u.completed);
 
-        let msg = `╔══════════════════╗\n📊 *TEST REPORT*\n╚══════════════════╝\n\n`;
-        msg += `✅ *Submitted:* ${completed.length}\n`;
-        msg += `❌ *Missed:* ${pending.length}\n`;
-        msg += `💸 *Fine would be:* ₹${pending.length * FINE_AMOUNT}\n`;
-        msg += `━━━━━━━━━━━━━━━`;
+        let msg = `â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—\nðŸ“Š *TEST REPORT*\nâ•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n\n`;
+        msg += `âœ… *Submitted:* ${completed.length}\n`;
+        msg += `âŒ *Missed:* ${pending.length}\n`;
+        msg += `ðŸ’¸ *Fine would be:* â‚¹${pending.length * FINE_AMOUNT}\n`;
+        msg += `â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”`;
 
         if (completed.length) {
-          msg += `\n\n🏅 *Submitted:*\n`;
-          completed.forEach((u) => { msg += `✅ @${getName(u.userId)}\n`; });
+          msg += `\n\nðŸ… *Submitted:*\n`;
+          completed.forEach((u) => { msg += `âœ… @${getName(u.userId)}\n`; });
         }
 
         if (pending.length) {
-          msg += `\n\n⚠️ *Would be fined ₹${FINE_AMOUNT}:*\n`;
-          pending.forEach((u) => { msg += `❌ @${getName(u.userId)} _(Current fine: ₹${u.fine || 0})_\n`; });
+          msg += `\n\nâš ï¸ *Would be fined â‚¹${FINE_AMOUNT}:*\n`;
+          pending.forEach((u) => { msg += `âŒ @${getName(u.userId)} _(Current fine: â‚¹${u.fine || 0})_\n`; });
         }
 
-        msg += `\n━━━━━━━━━━━━━━━\n⚠️ _This is a TEST — no fines applied, no status reset._`;
+        msg += `\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nâš ï¸ _This is a TEST â€” no fines applied, no status reset._`;
 
         return safeSend(sock, chatId, {
           text: msg,
@@ -1523,96 +1523,96 @@ async function startBot() {
         });
       }
 
-      // 🤖 GENERATE QUESTIONS (Admin only)
+      // ðŸ¤– GENERATE QUESTIONS (Admin only)
       if (cmd.startsWith("/genq")) {
-        if (!isAdmin) return safeSend(sock, chatId, { text: `❌ *Access Denied*\n_Only admins can use this command._` });
+        if (!isAdmin) return safeSend(sock, chatId, { text: `âŒ *Access Denied*\n_Only admins can use this command._` });
 
         const parts = cmd.split(/\s+/);
         const count = parseInt(parts[1] ?? "7");
         const total = isNaN(count) || count <= 0 ? 7 : count;
 
-        await safeSend(sock, chatId, { text: `🤖 _Generating ${total} new questions… please wait._` });
+        await safeSend(sock, chatId, { text: `ðŸ¤– _Generating ${total} new questionsâ€¦ please wait._` });
 
         try {
           const { inserted, skipped, totalInDb } = await generateAndInsertQuestions(total);
 
-          let reply = `✅ *Questions Generated!*\n\n━━━━━━━━━━━━━━━\n`;
-          reply += `📥 *Added:* ${inserted.length} new questions\n`;
-          if (skipped.length > 0) reply += `⚠️ *Skipped:* ${skipped.length} (duplicates)\n`;
-          reply += `📊 *Total in DB:* ${totalInDb}\n`;
+          let reply = `âœ… *Questions Generated!*\n\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n`;
+          reply += `ðŸ“¥ *Added:* ${inserted.length} new questions\n`;
+          if (skipped.length > 0) reply += `âš ï¸ *Skipped:* ${skipped.length} (duplicates)\n`;
+          reply += `ðŸ“Š *Total in DB:* ${totalInDb}\n`;
 
           return safeSend(sock, chatId, { text: reply });
         } catch (err) {
-          console.log("❌ /genq error:", err.message);
-          return safeSend(sock, chatId, { text: `❌ *Generation failed:* _${err.message}_` });
+          console.log("âŒ /genq error:", err.message);
+          return safeSend(sock, chatId, { text: `âŒ *Generation failed:* _${err.message}_` });
         }
       }
 
-      // 📊 QUESTION COUNT (Admin only)
+      // ðŸ“Š QUESTION COUNT (Admin only)
       if (cmd === "/qcount") {
-        if (!isAdmin) return safeSend(sock, chatId, { text: `❌ *Access Denied*\n_Only admins can use this command._` });
+        if (!isAdmin) return safeSend(sock, chatId, { text: `âŒ *Access Denied*\n_Only admins can use this command._` });
 
         const qCount = await Question.countDocuments();
         return safeSend(sock, chatId, {
-          text: `📊 *Questions in DB:* ${qCount}\n\n💡 _Use /genq [count] to add more._`,
+          text: `ðŸ“Š *Questions in DB:* ${qCount}\n\nðŸ’¡ _Use /genq [count] to add more._`,
         });
       }
 
-      // 🔄 RESET STATUS
+      // ðŸ”„ RESET STATUS
       if (cmd.startsWith("/resetstatus")) {
-        if (!isAdmin) return safeSend(sock, chatId, { text: `❌ *Access Denied*\n_Only admins can use this command._` });
+        if (!isAdmin) return safeSend(sock, chatId, { text: `âŒ *Access Denied*\n_Only admins can use this command._` });
 
         await resetStatus();
 
         return safeSend(sock, chatId, {
-          text: `🔄 *Status Reset Done!*\n\n━━━━━━━━━━━━━━━\n✅ All daily flags have been cleared.`,
+          text: `ðŸ”„ *Status Reset Done!*\n\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nâœ… All daily flags have been cleared.`,
         });
       }
 
-      // 🔄 RESET DAY
+      // ðŸ”„ RESET DAY
       if (cmd.startsWith("/resetday")) {
         if (!isAdmin)
           return safeSend(sock, chatId, {
-            text: `❌ *Access Denied*\n_Only admins can use this command._`,
+            text: `âŒ *Access Denied*\n_Only admins can use this command._`,
           });
 
         await User.updateMany({}, { completed: false });
 
         return safeSend(sock, chatId, {
-          text: `🔄 *Today's Status Reset!*\n\n━━━━━━━━━━━━━━━\n✅ All members marked as pending for today.\n\n💡 _Fines remain unchanged. Use /resetfine to clear fines._`,
+          text: `ðŸ”„ *Today's Status Reset!*\n\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nâœ… All members marked as pending for today.\n\nðŸ’¡ _Fines remain unchanged. Use /resetfine to clear fines._`,
         });
       }
 
-      // 💰 RESET FINE
+      // ðŸ’° RESET FINE
       if (cmd.startsWith("/resetfine")) {
         if (!isAdmin)
           return safeSend(sock, chatId, {
-            text: `❌ *Access Denied*\n_Only admins can use this command._`,
+            text: `âŒ *Access Denied*\n_Only admins can use this command._`,
           });
 
         await User.updateMany({}, { fine: 0 });
 
         return safeSend(sock, chatId, {
-          text: `💰 *All Fines Cleared!*\n\n━━━━━━━━━━━━━━━\n✅ All member fines have been reset to ₹0.\n\n💡 _Daily status unchanged. Use /resetday to reset status._`,
+          text: `ðŸ’° *All Fines Cleared!*\n\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nâœ… All member fines have been reset to â‚¹0.\n\nðŸ’¡ _Daily status unchanged. Use /resetday to reset status._`,
         });
       }
 
-      // ✏️ SET NAME — manually set a member's display name
+      // âœï¸ SET NAME â€” manually set a member's display name
       // Usage: /setname @mention Name Here
       if (cmd.startsWith("/setname")) {
         if (!isAdmin)
-          return safeSend(sock, chatId, { text: `❌ *Access Denied*\n_Only admins can use this command._` });
+          return safeSend(sock, chatId, { text: `âŒ *Access Denied*\n_Only admins can use this command._` });
 
         const mentioned = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
         if (!mentioned.length) {
-          return safeSend(sock, chatId, { text: `❌ Usage: /setname @mention Name\nExample: /setname @628xxx Sinan` });
+          return safeSend(sock, chatId, { text: `âŒ Usage: /setname @mention Name\nExample: /setname @628xxx Sinan` });
         }
 
         // Name is everything after the command and mention
         const rawText = text.trim();
         const nameMatch = rawText.replace(/\/setname\s*/i, "").replace(/@\S+\s*/g, "").trim();
         if (!nameMatch) {
-          return safeSend(sock, chatId, { text: `❌ Please provide a name. Usage: /setname @mention Name` });
+          return safeSend(sock, chatId, { text: `âŒ Please provide a name. Usage: /setname @mention Name` });
         }
 
         const results = [];
@@ -1621,19 +1621,19 @@ async function startBot() {
             ? userId.replace("@lid", "@s.whatsapp.net")
             : userId;
           await User.updateOne({ userId: normalizedId }, { $set: { name: nameMatch } });
-          results.push(`@${getName(normalizedId)} → *${nameMatch}*`);
+          results.push(`@${getName(normalizedId)} â†’ *${nameMatch}*`);
         }
 
         return safeSend(sock, chatId, {
-          text: `✅ *Name Updated!*\n\n━━━━━━━━━━━━━━━\n${results.join("\n")}`,
+          text: `âœ… *Name Updated!*\n\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n${results.join("\n")}`,
           mentions: mentioned,
         });
       }
 
-      // 👥 SYNC USERS — add all current group members to DB (for members who joined before bot)
+      // ðŸ‘¥ SYNC USERS â€” add all current group members to DB (for members who joined before bot)
       if (cmd.startsWith("/syncusers")) {
         if (!isAdmin)
-          return safeSend(sock, chatId, { text: `❌ *Access Denied*\n_Only admins can use this command._` });
+          return safeSend(sock, chatId, { text: `âŒ *Access Denied*\n_Only admins can use this command._` });
 
         try {
           const meta = await sock.groupMetadata(TARGET_GROUP);
@@ -1657,17 +1657,17 @@ async function startBot() {
           }
 
           return safeSend(sock, chatId, {
-            text: `✅ *Users Synced!*\n\n━━━━━━━━━━━━━━━\n➕ Added *${added}* new member(s) to DB.\n📦 Total tracked: *${meta.participants.length}*`,
+            text: `âœ… *Users Synced!*\n\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nâž• Added *${added}* new member(s) to DB.\nðŸ“¦ Total tracked: *${meta.participants.length}*`,
           });
         } catch (err) {
-          return safeSend(sock, chatId, { text: `❌ Sync failed: ${err.message}` });
+          return safeSend(sock, chatId, { text: `âŒ Sync failed: ${err.message}` });
         }
       }
 
-      // 🔄 SYNC NAMES — bulk fetch push names from group metadata
+      // ðŸ”„ SYNC NAMES â€” bulk fetch push names from group metadata
       if (cmd.startsWith("/syncnames")) {
         if (!isAdmin)
-          return safeSend(sock, chatId, { text: `❌ *Access Denied*\n_Only admins can use this command._` });
+          return safeSend(sock, chatId, { text: `âŒ *Access Denied*\n_Only admins can use this command._` });
 
         try {
           const meta = await sock.groupMetadata(TARGET_GROUP);
@@ -1704,24 +1704,24 @@ async function startBot() {
           }
 
           return safeSend(sock, chatId, {
-            text: `✅ *Names Synced!*\n\n━━━━━━━━━━━━━━━\n🔄 From group metadata: *${updated}*\n📇 From contact store: *${fromStore}*\n\n💡 _Names will auto-update as members send messages._`,
+            text: `âœ… *Names Synced!*\n\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nðŸ”„ From group metadata: *${updated}*\nðŸ“‡ From contact store: *${fromStore}*\n\nðŸ’¡ _Names will auto-update as members send messages._`,
           });
         } catch (err) {
-          return safeSend(sock, chatId, { text: `❌ Sync failed: ${err.message}` });
+          return safeSend(sock, chatId, { text: `âŒ Sync failed: ${err.message}` });
         }
       }
 
-      // 🧹 DEDUP — remove duplicate userId records from DB
+      // ðŸ§¹ DEDUP â€” remove duplicate userId records from DB
       if (cmd.startsWith("/dedup")) {
         if (!isAdmin)
-          return safeSend(sock, chatId, { text: `❌ *Access Denied*\n_Only admins can use this command._` });
+          return safeSend(sock, chatId, { text: `âŒ *Access Denied*\n_Only admins can use this command._` });
 
         const users = await User.find();
 
         // Normalize userId to phone number only for comparison
         const getPhone = (id) => id ? id.replace(/@s\.whatsapp\.net|@lid|@c\.us/g, "").split(":")[0] : null;
 
-        // Step 1: Fix @lid records that have no duplicate — just rename them
+        // Step 1: Fix @lid records that have no duplicate â€” just rename them
         let migrated = 0;
         for (const u of users) {
           if (u.userId?.includes("@lid")) {
@@ -1768,13 +1768,13 @@ async function startBot() {
         }
 
         return safeSend(sock, chatId, {
-          text: `🧹 *Dedup Complete!*\n\n━━━━━━━━━━━━━━━\n✅ Removed *${removed}* duplicate(s)\n🔄 Migrated *${migrated}* @lid record(s)\n📦 Unique members: *${phoneMap.size}*`,
+          text: `ðŸ§¹ *Dedup Complete!*\n\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nâœ… Removed *${removed}* duplicate(s)\nðŸ”„ Migrated *${migrated}* @lid record(s)\nðŸ“¦ Unique members: *${phoneMap.size}*`,
         });
       }
 
-      // ✍️ GRAMMAR COMMANDS
+      // âœï¸ GRAMMAR COMMANDS
       if (cmd === "/grammar on") {
-        if (!isAdmin) return safeSend(sock, chatId, { text: "❌ Only admins can use this command" });
+        if (!isAdmin) return safeSend(sock, chatId, { text: "âŒ Only admins can use this command" });
 
         await GrammarSettings.updateOne(
           { groupId: chatId },
@@ -1783,12 +1783,12 @@ async function startBot() {
         );
 
         return safeSend(sock, chatId, {
-          text: "✅ *Grammar Assistant Enabled!*\n\n📝 I'll now help members improve their English.",
+          text: "âœ… *Grammar Assistant Enabled!*\n\nðŸ“ I'll now help members improve their English.",
         });
       }
 
       if (cmd === "/grammar off") {
-        if (!isAdmin) return safeSend(sock, chatId, { text: "❌ Only admins can use this command" });
+        if (!isAdmin) return safeSend(sock, chatId, { text: "âŒ Only admins can use this command" });
 
         await GrammarSettings.updateOne(
           { groupId: chatId },
@@ -1797,7 +1797,7 @@ async function startBot() {
         );
 
         return safeSend(sock, chatId, {
-          text: "⏸️ *Grammar Assistant Disabled*\n\n📝 I won't analyze messages anymore.",
+          text: "â¸ï¸ *Grammar Assistant Disabled*\n\nðŸ“ I won't analyze messages anymore.",
         });
       }
 
@@ -1810,36 +1810,36 @@ async function startBot() {
         };
 
         return safeSend(sock, chatId, {
-          text: `📊 *Grammar Assistant Status*\n\n` +
-            `✍️ Grammar: ${settings.grammarEnabled ? "✅ ON" : "❌ OFF"}\n` +
-            `⏰ Tense Check: ${settings.tenseEnabled ? "✅ ON" : "❌ OFF"}\n` +
-            `📚 Vocab: ${settings.vocabEnabled ? "✅ ON" : "❌ OFF"}\n` +
-            `⏱️ Cooldown: ${settings.cooldownMinutes} minutes`,
+          text: `ðŸ“Š *Grammar Assistant Status*\n\n` +
+            `âœï¸ Grammar: ${settings.grammarEnabled ? "âœ… ON" : "âŒ OFF"}\n` +
+            `â° Tense Check: ${settings.tenseEnabled ? "âœ… ON" : "âŒ OFF"}\n` +
+            `ðŸ“š Vocab: ${settings.vocabEnabled ? "âœ… ON" : "âŒ OFF"}\n` +
+            `â±ï¸ Cooldown: ${settings.cooldownMinutes} minutes`,
         });
       }
 
       if (cmd === "/tense on") {
-        if (!isAdmin) return safeSend(sock, chatId, { text: "❌ Only admins can use this command" });
+        if (!isAdmin) return safeSend(sock, chatId, { text: "âŒ Only admins can use this command" });
         await GrammarSettings.updateOne({ groupId: chatId }, { tenseEnabled: true }, { upsert: true });
-        return safeSend(sock, chatId, { text: "✅ Tense checking enabled!" });
+        return safeSend(sock, chatId, { text: "âœ… Tense checking enabled!" });
       }
 
       if (cmd === "/tense off") {
-        if (!isAdmin) return safeSend(sock, chatId, { text: "❌ Only admins can use this command" });
+        if (!isAdmin) return safeSend(sock, chatId, { text: "âŒ Only admins can use this command" });
         await GrammarSettings.updateOne({ groupId: chatId }, { tenseEnabled: false }, { upsert: true });
-        return safeSend(sock, chatId, { text: "⏸️ Tense checking disabled!" });
+        return safeSend(sock, chatId, { text: "â¸ï¸ Tense checking disabled!" });
       }
 
       if (cmd === "/vocab on") {
-        if (!isAdmin) return safeSend(sock, chatId, { text: "❌ Only admins can use this command" });
+        if (!isAdmin) return safeSend(sock, chatId, { text: "âŒ Only admins can use this command" });
         await GrammarSettings.updateOne({ groupId: chatId }, { vocabEnabled: true }, { upsert: true });
-        return safeSend(sock, chatId, { text: "✅ Vocabulary suggestions enabled!" });
+        return safeSend(sock, chatId, { text: "âœ… Vocabulary suggestions enabled!" });
       }
 
       if (cmd === "/vocab off") {
-        if (!isAdmin) return safeSend(sock, chatId, { text: "❌ Only admins can use this command" });
+        if (!isAdmin) return safeSend(sock, chatId, { text: "âŒ Only admins can use this command" });
         await GrammarSettings.updateOne({ groupId: chatId }, { vocabEnabled: false }, { upsert: true });
-        return safeSend(sock, chatId, { text: "⏸️ Vocabulary suggestions disabled!" });
+        return safeSend(sock, chatId, { text: "â¸ï¸ Vocabulary suggestions disabled!" });
       }
 
       if (cmd === "/mystats") {
@@ -1859,48 +1859,48 @@ async function startBot() {
 
         if (!userRecord) {
           return safeSend(sock, chatId, {
-            text: `❌ @${senderPhone} _You're not registered yet._`,
+            text: `âŒ @${senderPhone} _You're not registered yet._`,
             mentions: [actualUserJid],
           });
         }
 
         const streak = userRecord.streak || 0;
-        const streakBadge = streak >= 7 ? `🔥` : streak >= 3 ? `⚡` : `📅`;
+        const streakBadge = streak >= 7 ? `ðŸ”¥` : streak >= 3 ? `âš¡` : `ðŸ“…`;
         const totalFine = userRecord.fine || 0;
         const monthSubs = userRecord.monthlySubmissions || 0;
         const scores = userRecord.feedbackScores || [];
 
-        let avgLine = `_No feedback scores yet — submit a video to get scored!_`;
+        let avgLine = `_No feedback scores yet â€” submit a video to get scored!_`;
         if (scores.length > 0) {
           const avg = (key) => {
             const vals = scores.map(s => s[key]).filter(v => v != null);
-            return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : "—";
+            return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : "â€”";
           };
           avgLine =
-            `🗣️ *Fluency:*    ${avg("fluency")}/10\n` +
-            `📚 *Grammar:*    ${avg("grammar")}/10\n` +
-            `🔥 *Confidence:* ${avg("confidence")}/10\n` +
-            `🧠 *Vocabulary:* ${avg("vocabulary")}/10\n` +
+            `ðŸ—£ï¸ *Fluency:*    ${avg("fluency")}/10\n` +
+            `ðŸ“š *Grammar:*    ${avg("grammar")}/10\n` +
+            `ðŸ”¥ *Confidence:* ${avg("confidence")}/10\n` +
+            `ðŸ§  *Vocabulary:* ${avg("vocabulary")}/10\n` +
             `_(avg over last ${scores.length} submission${scores.length > 1 ? "s" : ""})_`;
         }
 
         const name = userRecord.name || senderPhone;
 
         const statsMsg =
-          `╔══════════════════╗\n` +
-          `📊 *MY STATS*\n` +
-          `╚══════════════════╝\n\n` +
-          `👤 *${name}*\n` +
-          `━━━━━━━━━━━━━━━\n` +
+          `â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—\n` +
+          `ðŸ“Š *MY STATS*\n` +
+          `â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n\n` +
+          `ðŸ‘¤ *${name}*\n` +
+          `â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n` +
           `${streakBadge} *Current Streak:* ${streak} day${streak !== 1 ? "s" : ""}\n` +
-          `💸 *Total Fine:* ₹${totalFine}\n` +
-          `📅 *Submitted This Month:* ${monthSubs} day${monthSubs !== 1 ? "s" : ""}\n` +
-          `📆 *Submitted This Week:* ${userRecord.weeklySubmissions || 0}/7 days\n` +
-          `━━━━━━━━━━━━━━━\n` +
-          `📈 *Avg Feedback Scores:*\n` +
+          `ðŸ’¸ *Total Fine:* â‚¹${totalFine}\n` +
+          `ðŸ“… *Submitted This Month:* ${monthSubs} day${monthSubs !== 1 ? "s" : ""}\n` +
+          `ðŸ“† *Submitted This Week:* ${userRecord.weeklySubmissions || 0}/7 days\n` +
+          `â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n` +
+          `ðŸ“ˆ *Avg Feedback Scores:*\n` +
           `${avgLine}\n` +
-          `━━━━━━━━━━━━━━━\n` +
-          `💪 _Keep submitting daily to improve your scores!_`;
+          `â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n` +
+          `ðŸ’ª _Keep submitting daily to improve your scores!_`;
 
         // Send full stats privately to the user's DM
         console.log(`[/mystats] Sending DM to: ${dmJid} (actualUserJid: ${actualUserJid})`);
@@ -1908,18 +1908,18 @@ async function startBot() {
         console.log(`[/mystats] DM sent result: ${dmSent}`);
 
         if (!dmSent) {
-          // DM failed — send stats in group as a reply instead
+          // DM failed â€” send stats in group as a reply instead
           console.log(`[/mystats] DM failed, sending in group as fallback`);
           await safeSend(sock, chatId, { text: statsMsg, mentions: [actualUserJid] });
           return safeSend(sock, chatId, {
-            text: `⚠️ @${senderPhone} _Couldn't send to your DM. Stats posted above — only you can see the details._`,
+            text: `âš ï¸ @${senderPhone} _Couldn't send to your DM. Stats posted above â€” only you can see the details._`,
             mentions: [actualUserJid],
           });
         }
 
         // Acknowledge in group with proper tappable mention
         return safeSend(sock, chatId, {
-          text: `📊 @${senderPhone} _Your stats have been sent to your DM!_ 👆`,
+          text: `ðŸ“Š @${senderPhone} _Your stats have been sent to your DM!_ ðŸ‘†`,
           mentions: [actualUserJid],
         });
       }
@@ -1931,12 +1931,12 @@ async function startBot() {
 
         if (!topUsers.length) {
           return safeSend(sock, chatId, {
-            text: "📊 *Top Learners*\n\nNo stats yet! Start chatting in English.",
+            text: "ðŸ“Š *Top Learners*\n\nNo stats yet! Start chatting in English.",
           });
         }
 
-        let msg = "🏆 *Top English Learners*\n\n";
-        const medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"];
+        let msg = "ðŸ† *Top English Learners*\n\n";
+        const medals = ["ðŸ¥‡", "ðŸ¥ˆ", "ðŸ¥‰", "4ï¸âƒ£", "5ï¸âƒ£"];
 
         topUsers.forEach((u, i) => {
           msg += `${medals[i]} @${getName(u.userId)} - ${u.totalCorrections} corrections\n`;
@@ -1948,7 +1948,7 @@ async function startBot() {
         });
       }
 
-      // 🎥 VIDEO CHECK
+      // ðŸŽ¥ VIDEO CHECK
       const video =
         msg.message?.videoMessage ||
         msg.message?.ephemeralMessage?.message?.videoMessage ||
@@ -1958,11 +1958,11 @@ async function startBot() {
         (docIsVideo ? docMsg : null);
 
       if (video) {
-        // Documents don't have a seconds field — skip duration check, Whisper will measure it
+        // Documents don't have a seconds field â€” skip duration check, Whisper will measure it
         const isDocument = video === docMsg;
         if (!isDocument && (video.seconds || 0) < 60) {
           return safeSend(sock, chatId, {
-            text: `❌ *Video Too Short!*\n\n━━━━━━━━━━━━━━━\n⏱️ Minimum duration is *1 minute*.\n\n🔁 _Please re-record and send again._`,
+            text: `âŒ *Video Too Short!*\n\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nâ±ï¸ Minimum duration is *1 minute*.\n\nðŸ” _Please re-record and send again._`,
           });
         }
 
@@ -1970,7 +1970,7 @@ async function startBot() {
 
         if (existing?.completed) {
           return safeSend(sock, chatId, {
-            text: `⚠️ *Already Submitted!*\n\n━━━━━━━━━━━━━━━\n✅ You've already sent your video for today.\n\n😎 _Sit back and relax — see you tomorrow!_`,
+            text: `âš ï¸ *Already Submitted!*\n\nâ”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nâœ… You've already sent your video for today.\n\nðŸ˜Ž _Sit back and relax â€” see you tomorrow!_`,
           });
         }
 
@@ -1998,21 +1998,21 @@ async function startBot() {
         } catch (_) { }
 
         await safeSend(sock, chatId, {
-          text: `🔥 *Great work, @${userPhone}!*\n\n✅ Submission received!\n\n💪 _Keep showing up every day — consistency is what separates the best from the rest. You're on the right track!_ 🚀`,
+          text: `ðŸ”¥ *Great work, @${userPhone}!*\n\nâœ… Submission received!\n\nðŸ’ª _Keep showing up every day â€” consistency is what separates the best from the rest. You're on the right track!_ ðŸš€`,
           mentions: [actualUserJid],
         });
 
         // Fetch today's topic for AI relevance check
         const todayStatus = await getStatus();
 
-        // Compute content hash for dedup — include sender so forwarded videos
+        // Compute content hash for dedup â€” include sender so forwarded videos
         // (same fileSha256, different sender) are treated as separate submissions.
         const hash = hashBuffer(Buffer.from(`${dbUser}:${video.fileSha256 || video.mediaKey || msg.key.id}`));
         const cacheEntry = await getCacheEntry(hash);
 
         if (cacheEntry === 'processing') {
           await safeSend(sock, chatId, {
-            text: `⏳ _Your video is already being processed! Please wait._`,
+            text: `â³ _Your video is already being processed! Please wait._`,
             mentions: [actualUserJid],
           });
           return;
@@ -2028,7 +2028,7 @@ async function startBot() {
 
         // Send initial progress message and capture its key
         const progressSent = await sock.sendMessage(chatId, {
-          text: `⏳ _Analysing your video, @${userPhone}..._`,
+          text: `â³ _Analysing your video, @${userPhone}..._`,
           mentions: [actualUserJid],
         });
         const progressMsgKey = progressSent?.key;
@@ -2037,18 +2037,18 @@ async function startBot() {
           if (!progressMsgKey) return;
           try {
             await sock.sendMessage(chatId, {
-              text: `⏳ _${stage}_`,
+              text: `â³ _${stage}_`,
               edit: progressMsgKey,
             });
           } catch (_) { }
         };
 
-        // 🤖 AI Feedback (runs async, won't block submission)
+        // ðŸ¤– AI Feedback (runs async, won't block submission)
         generateFeedback(msg, dbUser, video.seconds || 60, todayStatus?.todayTopic || null, todayStatus?.todayQuestion || null, sock, { onProgress, displayName: userPhone })
           .then((feedbackText) => {
             storeResult(hash, feedbackText);
 
-            // 💾 Parse & save feedback scores for /mystats
+            // ðŸ’¾ Parse & save feedback scores for /mystats
             const scores = parseFeedbackScores(feedbackText);
             if (scores) {
               User.updateOne(
@@ -2076,8 +2076,8 @@ async function startBot() {
           })
           .catch((err) => {
             evict(hash);
-            console.log("❌ Feedback error:", err.message);
-            const errMsg = `⚠️ _Feedback unavailable: ${err.message}_`;
+            console.log("âŒ Feedback error:", err.message);
+            const errMsg = `âš ï¸ _Feedback unavailable: ${err.message}_`;
             if (progressMsgKey) {
               sock.sendMessage(chatId, {
                 text: errMsg,
@@ -2091,7 +2091,7 @@ async function startBot() {
         return; // Done with video
       }
 
-      // ✍️ GRAMMAR ANALYSIS - DISABLED
+      // âœï¸ GRAMMAR ANALYSIS - DISABLED
       // To re-enable, remove the return below and use /grammar on command
       return;
 
@@ -2107,7 +2107,7 @@ async function startBot() {
 
       if (!grammarSettings.grammarEnabled) return;
 
-      console.log(`✍️ Analyzing: "${text}" from ${getName(dbUser)}`);
+      console.log(`âœï¸ Analyzing: "${text}" from ${getName(dbUser)}`);
       const grammarResult = await processMessage(text, grammarSettings, OPENAI_API_KEY);
 
       if (grammarResult) {
@@ -2119,21 +2119,21 @@ async function startBot() {
 
         const response = formatResponse(grammarResult, getName(dbUser));
         await safeSend(sock, chatId, { text: response, mentions: [dbUser] });
-        console.log(`✍️ Grammar feedback sent to ${getName(dbUser)}`);
+        console.log(`âœï¸ Grammar feedback sent to ${getName(dbUser)}`);
       } else {
-        console.log(`✅ No corrections needed for ${getName(dbUser)}`);
+        console.log(`âœ… No corrections needed for ${getName(dbUser)}`);
       }
       */
 
     } catch (err) {
-      console.log("❌ Message error:", err);
+      console.log("âŒ Message error:", err);
     }
   });
 
   // ================= CRON =================
   if (!cronsRegistered) {
     cronsRegistered = true;
-    console.log("⏰ Registering cron jobs...");
+    console.log("â° Registering cron jobs...");
 
     cron.schedule("30 7 * * *", sendGoodMorning, { timezone: TIMEZONE });
 
@@ -2146,7 +2146,7 @@ async function startBot() {
       async () => {
         const now = new Date(new Date().toLocaleString("en-US", { timeZone: TIMEZONE }));
         const minutes = now.getMinutes();
-        if (minutes < 5 || minutes > 30) return; // only retry 8:05–9:30
+        if (minutes < 5 || minutes > 30) return; // only retry 8:05â€“9:30
         await sendQuestion();
       },
       { timezone: TIMEZONE },
@@ -2156,7 +2156,7 @@ async function startBot() {
       "0 15 * * *",
       () =>
         sendReminder(
-          `⏰ *Reminder*\n\n🗣️ _Don't forget to submit your speaking video today!_`,
+          `â° *Reminder*\n\nðŸ—£ï¸ _Don't forget to submit your speaking video today!_`,
         ),
       {
         timezone: TIMEZONE,
@@ -2167,7 +2167,7 @@ async function startBot() {
       "0 21 * * *",
       () =>
         sendReminder(
-          `🌙 *Night Reminder*\n\n😴 _It's getting late — submit your video before midnight!_`,
+          `ðŸŒ™ *Night Reminder*\n\nðŸ˜´ _It's getting late â€” submit your video before midnight!_`,
         ),
       {
         timezone: TIMEZONE,
@@ -2199,14 +2199,14 @@ async function startBot() {
             image: { url: "./daily.png" },
           });
 
-          console.log("🧪 Test question sent to owner");
+          console.log("ðŸ§ª Test question sent to owner");
         } catch (err) {
-          console.log("❌ Test cron error:", err);
+          console.log("âŒ Test cron error:", err);
         }
       }, { timezone: TIMEZONE });
     }
 
-    console.log("✅ All cron jobs registered (7:30 GM, 8:00, 8:05-8:30, 15:00, 21:00, 22:30, 23:30, 00:00, 00:05, Sun 21:00)");
+    console.log("âœ… All cron jobs registered (7:30 GM, 8:00, 8:05-8:30, 15:00, 21:00, 22:30, 23:30, 00:00, 00:05, Sun 21:00)");
   } // end cronsRegistered guard
 
   // ================= CONNECTION =================
@@ -2218,19 +2218,19 @@ async function startBot() {
     if (connection === "open") {
       const wasReconnecting = reconnecting;
       reconnecting = false;
-      console.log("✅ Connected");
+      console.log("âœ… Connected");
 
       // Start DB health check on first connect only
       if (!global._dbHealthStarted) {
         global._dbHealthStarted = true;
         startDBHealthCheck((text) => safeSend(sock, OWNER, { text }));
-        console.log("💚 DB health check started (every 5 min)");
+        console.log("ðŸ’š DB health check started (every 5 min)");
       }
 
       // On reconnect, notify owner that any videos sent during downtime were missed
       if (wasReconnecting) {
         safeSend(sock, OWNER, {
-          text: `🔄 *Bot reconnected!*\n\n⚠️ _Any videos sent while the bot was offline were NOT processed._\n\n📹 _Ask members who sent videos during downtime to resend them._`,
+          text: `ðŸ”„ *Bot reconnected!*\n\nâš ï¸ _Any videos sent while the bot was offline were NOT processed._\n\nðŸ“¹ _Ask members who sent videos during downtime to resend them._`,
         });
       }
     }
@@ -2240,7 +2240,7 @@ async function startBot() {
       const reason = lastDisconnect?.error?.message || "";
 
       if (code === DisconnectReason.loggedOut) {
-        console.log("❌ Logged out. Delete auth folder and restart.");
+        console.log("âŒ Logged out. Delete auth folder and restart.");
         return;
       }
 
@@ -2249,13 +2249,13 @@ async function startBot() {
         reason.includes("conflict") ||
         reason.includes("replaced")
       ) {
-        console.log("⚠️ Conflict: another instance took over. Stopping this one.");
+        console.log("âš ï¸ Conflict: another instance took over. Stopping this one.");
         process.exit(0);
       }
 
       if (reconnecting) return; // prevent stacking multiple reconnect timers
       reconnecting = true;
-      console.log(`⚠️ Disconnected (code: ${code}), reconnecting in 5s...`);
+      console.log(`âš ï¸ Disconnected (code: ${code}), reconnecting in 5s...`);
       setTimeout(startBot, 5000);
     }
   });
