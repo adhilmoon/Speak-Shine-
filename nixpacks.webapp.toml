@@ -1,0 +1,18 @@
+[phases.setup]
+nixPkgs = ["nodejs_22", "ffmpeg", "vips"]
+
+[phases.install]
+cmds = [
+  "npm install --prefer-offline --no-audit --no-fund --omit=dev",
+  "cd api && npm install --prefer-offline --no-audit --no-fund --omit=dev",
+  "cd frontend && npm ci --prefer-offline --no-audit --no-fund"
+]
+
+[phases.build]
+cmds = [
+  "cd frontend && NODE_ENV=production npm run build",
+  "rm -rf frontend/node_modules frontend/src"
+]
+
+[start]
+cmd = "NODE_ENV=production node api/server.js"
