@@ -10,20 +10,27 @@ let qrTimestamp = null;
 
 // Function to be called from index.js to update QR code
 export async function updateQR(qrData) {
+  console.log('[QR] updateQR called with data length:', qrData?.length);
   latestQR = qrData;
   qrTimestamp = new Date();
   
   // Store in Redis if available
-  if (isRedisAvailable()) {
+  const redisAvailable = isRedisAvailable();
+  console.log('[QR] Redis available:', redisAvailable);
+  
+  if (redisAvailable) {
     try {
       const redis = getRedisClient();
       await redis.set('whatsapp:qr:data', qrData);
       await redis.set('whatsapp:qr:timestamp', qrTimestamp.toISOString());
       await redis.expire('whatsapp:qr:data', 120); // Expire after 2 minutes
       await redis.expire('whatsapp:qr:timestamp', 120);
+      console.log('[QR] Successfully stored in Redis');
     } catch (error) {
-      console.error('Failed to store QR in Redis:', error);
+      console.error('[QR] Failed to store QR in Redis:', error);
     }
+  } else {
+    console.log('[QR] Using in-memory storage (Redis not available)');
   }
   
   console.log('📱 QR code updated, accessible at /api/qr');
@@ -35,6 +42,9 @@ router.get('/', async (req, res) => {
     let qrData = latestQR;
     let timestamp = qrTimestamp;
 
+    console.log('[QR] GET request - in-memory QR exists:', !!latestQR);
+    console.log('[QR] Redis available:', isRedisAvailable());
+
     // Try to get from Redis first
     if (isRedisAvailable()) {
       try {
@@ -42,16 +52,19 @@ router.get('/', async (req, res) => {
         const redisQR = await redis.get('whatsapp:qr:data');
         const redisTimestamp = await redis.get('whatsapp:qr:timestamp');
         
+        console.log('[QR] Redis QR exists:', !!redisQR);
+        
         if (redisQR) {
           qrData = redisQR;
           timestamp = redisTimestamp ? new Date(redisTimestamp) : new Date();
         }
       } catch (error) {
-        console.error('Failed to get QR from Redis:', error);
+        console.error('[QR] Failed to get QR from Redis:', error);
       }
     }
 
     if (!qrData) {
+      console.log('[QR] No QR code available, showing waiting page');
       return res.send(`
         <!DOCTYPE html>
         <html>
@@ -69,12 +82,14 @@ router.get('/', async (req, res) => {
             <h1>⏳ Waiting for QR Code...</h1>
             <p>The bot is starting up. This page will refresh automatically.</p>
             <p><small>Last checked: ${new Date().toLocaleTimeString()}</small></p>
+            <p><small>Redis: ${isRedisAvailable() ? 'Connected' : 'Not connected'}</small></p>
           </div>
         </body>
         </html>
       `);
     }
 
+    console.log('[QR] Serving QR code');
     // Generate QR code image
     const qrImage = await QRCode.toDataURL(qrData);
     const age = Math.floor((Date.now() - timestamp) / 1000);

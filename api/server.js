@@ -23,6 +23,14 @@ import qrRoutes from "./routes/qr.js";
 
 dotenv.config();
 
+// Initialize Redis client
+const redis = getRedisClient();
+if (redis) {
+  console.log('[Redis] Initializing connection...');
+} else {
+  console.log('[Redis] No REDIS_URL configured, using in-memory storage');
+}
+
 const JWT_SECRET = process.env.JWT_SECRET || "speakshine_secret_2024";
 
 process.on("uncaughtException", (err) => {
