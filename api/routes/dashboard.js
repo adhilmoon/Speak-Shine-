@@ -167,6 +167,25 @@ router.get("/scores/:phone", authMiddleware, async (req, res) => {
   }
 });
 
+// PATCH /api/dashboard/today-question — admin: manually set today's question for webapp
+router.patch("/today-question", authMiddleware, requireRole("admin"), async (req, res) => {
+  try {
+    const { topic, question, category } = req.body;
+    if (!question) return res.status(400).json({ error: "question is required" });
+    await Status.updateOne({}, {
+      $set: {
+        todayQuestion: question,
+        todayTopic: topic || null,
+        todayCategory: category || null,
+        questionSentToday: true,
+      }
+    }, { upsert: true });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/dashboard/settings — get configurable bot schedule times (admin only)
 router.get("/settings", authMiddleware, requireRole("admin"), async (req, res) => {
   try {

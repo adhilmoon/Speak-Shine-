@@ -271,8 +271,41 @@ export default function AdminDashboard() {
       {tab==="today" && (
         <>
           {dash?.today?.question
-            ? <div className="today-card"><div className="today-label">📌 Today's Question</div><div className="today-q">{dash.today.question}</div></div>
-            : <div className="warn-box"><p>⏳ No question sent today yet.</p></div>}
+            ? <div className="today-card"><div className="today-label">📌 Today's Question</div><div className="today-q">{dash.today.question}</div>{dash.today.topic && <span className="today-topic">{dash.today.topic}</span>}</div>
+            : <div className="warn-box"><p>⏳ No question set for today yet.</p></div>}
+
+          {/* Publish question to webapp */}
+          <div className="card" style={{marginBottom:"1rem"}}>
+            <div className="section-title">📢 Publish Question to Webapp</div>
+            <p style={{color:"var(--muted)",fontSize:"0.85rem",marginBottom:"1rem"}}>Pick a question from the bank and publish it so webapp users can see today's challenge.</p>
+            <div style={{display:"flex",gap:"0.75rem",flexWrap:"wrap",alignItems:"flex-end"}}>
+              <select className="form-input" style={{flex:1,minWidth:200}}
+                onChange={e => {
+                  const q = questions.find(x=>x._id===e.target.value);
+                  if(q) setQForm({category:q.category,topic:q.topic,question:q.question,_id:q._id});
+                }}
+                defaultValue="">
+                <option value="" disabled>— Select a question —</option>
+                {questions.map(q=>(
+                  <option key={q._id} value={q._id}>[{q.category}] {q.topic}: {q.question.slice(0,60)}…</option>
+                ))}
+              </select>
+              <button className="btn-primary" onClick={async()=>{
+                if(!qForm.question){msg("Select a question first","danger");return;}
+                try{
+                  await api.patch("/dashboard/today-question",{topic:qForm.topic,question:qForm.question,category:qForm.category});
+                  msg("✅ Question published to webapp!");
+                  load();
+                }catch(e){msg(e?.response?.data?.error||"Failed","danger");}
+              }}>Publish</button>
+            </div>
+            {qForm.question && (
+              <div style={{marginTop:"0.75rem",padding:"0.75rem",background:"var(--bg-secondary)",borderRadius:8,fontSize:"0.9rem"}}>
+                <strong>{qForm.topic}</strong> — {qForm.question}
+              </div>
+            )}
+          </div>
+
           <div className="card">
             <div className="section-title">Submission Status</div>
             <div className="table-wrap">
