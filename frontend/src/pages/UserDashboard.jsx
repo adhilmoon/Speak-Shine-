@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Layout from "../components/Layout.jsx";
 import StatCard from "../components/StatCard.jsx";
 import api from "../api/client.js";
@@ -16,6 +17,7 @@ export default function UserDashboard() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     api.get("/dashboard/me")
@@ -141,10 +143,27 @@ export default function UserDashboard() {
             <div className="daily-poster-question">{data.today.question}</div>
           </div>
 
-          {/* CTA */}
-          <div className="daily-poster-cta">
-            🎥 Upload your 1-min speaking video below!
-          </div>
+          {/* CTA Button */}
+          <button 
+            className="daily-poster-cta" 
+            onClick={() => navigate('/video-analysis')}
+            style={{ 
+              cursor: 'pointer',
+              border: 'none',
+              width: '100%',
+              transition: 'transform 0.2s, box-shadow 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 8px 20px rgba(124, 111, 255, 0.3)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = 'none';
+            }}
+          >
+            🎥 Upload Your Speaking Video Now!
+          </button>
         </div>
       )}
 
