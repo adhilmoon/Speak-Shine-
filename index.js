@@ -343,53 +343,44 @@ async function startBot() {
 
       const question = q[0];
 
-      // â”€â”€ Generate & send poster â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // Always save to Status for webapp first
+      const updatedRecent = question.category
+        ? [...new Set([...recentCategories, question.category])].slice(-7)
+        : recentCategories;
+
       let imageBuffer = null;
       try {
         imageBuffer = await generatePoster(question);
       } catch (posterErr) {
         console.log("Poster generation failed:", posterErr.message);
       }
-      if (!TARGET_GROUP) {
-        console.log("TARGET_GROUP not set");
-        return;
-      }
-      let sent = false;
-      if (imageBuffer) {
-        sent = await safeSend(sock, TARGET_GROUP, {
-          image: imageBuffer,
-          mimetype: "image/png",
-        });
-      } else {
-        console.log("[sendQuestion] Canvas unavailable, sending text fallback");
-        sent = await safeSend(sock, TARGET_GROUP, {
-          text: "Speak & Shine - Daily Challenge\n\nCategory: " + (question.category || "General") + "\n\nTopic: " + (question.topic || "") + "\n\nQuestion: " + question.question + "\n\nSend your 1-min speaking video!",
-        });
-      }
 
-      if (sent) {
-        await Question.findByIdAndDelete(question._id);
+      await Status.updateOne({}, {
+        $set: {
+          questionSentToday: true,
+          todayTopic: question.topic || null,
+          todayQuestion: question.question || null,
+          todayCategory: question.category || null,
+          todayPosterImage: imageBuffer ? ("data:image/png;base64," + imageBuffer.toString("base64")) : null,
+          posterExpiresAt: imageBuffer ? new Date(Date.now() + 15 * 60 * 60 * 1000) : null,
+          recentCategories: updatedRecent,
+        }
+      });
+      await Question.findByIdAndDelete(question._id);
+      console.log(`Question stored for webapp | Category: ${question.category || "N/A"}`);
 
-        const updatedRecent = question.category
-          ? [...new Set([...recentCategories, question.category])].slice(-7)
-          : recentCategories;
-
-        // âœ… Mark as sent ONLY after successful delivery
-        await Status.updateOne({}, {
-          $set: {
-            questionSentToday: true,
-            todayTopic: question.topic || null,
-            todayQuestion: question.question || null,
-            todayCategory: question.category || null,
-            todayPosterImage: imageBuffer ? ("data:image/png;base64," + imageBuffer.toString("base64")) : null,
-            posterExpiresAt: imageBuffer ? new Date(Date.now() + 15 * 60 * 60 * 1000) : null,
-            recentCategories: updatedRecent,
-          }
-        });
-
-        console.log(`âœ… Question sent | Category: ${question.category || "N/A"} | Recent: [${updatedRecent.join(", ")}]`);
-      } else {
-        console.log("âŒ Poster send failed â€” will retry next cron tick");
+      // Also send to WhatsApp group if connected
+      if (TARGET_GROUP && sock?.user) {
+        let sent = false;
+        if (imageBuffer) {
+          sent = await safeSend(sock, TARGET_GROUP, { image: imageBuffer, mimetype: "image/png" });
+        } else {
+          sent = await safeSend(sock, TARGET_GROUP, {
+            text: `Speaking Challenge\n\nTopic: ${question.topic || ""}\n\nQuestion: ${question.question}\n\nSend your 1-min speaking video!`,
+          });
+        }
+        if (sent) { console.log("Question also sent to WhatsApp"); }
+        else { console.log("WhatsApp send failed - question still stored for webapp"); }
       }
     } catch (err) {
       console.log("âŒ Question error:", err);
