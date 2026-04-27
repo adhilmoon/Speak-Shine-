@@ -75,14 +75,23 @@ router.get('/', async (req, res) => {
             body { font-family: Arial; text-align: center; padding: 50px; background: #0f172a; color: white; }
             .container { max-width: 600px; margin: 0 auto; }
             h1 { color: #10b981; }
+            .info { background: #1e293b; padding: 20px; border-radius: 10px; margin-top: 20px; }
+            .warning { color: #fbbf24; margin-top: 20px; }
           </style>
         </head>
         <body>
           <div class="container">
             <h1>⏳ Waiting for QR Code...</h1>
             <p>The bot is starting up. This page will refresh automatically.</p>
-            <p><small>Last checked: ${new Date().toLocaleTimeString()}</small></p>
-            <p><small>Redis: ${isRedisAvailable() ? 'Connected' : 'Not connected'}</small></p>
+            <div class="info">
+              <p><strong>Status:</strong></p>
+              <p>Redis: ${isRedisAvailable() ? '✅ Connected' : '❌ Not connected'}</p>
+              <p>Last checked: ${new Date().toLocaleTimeString()}</p>
+            </div>
+            <div class="warning">
+              <p>⚠️ <strong>Note:</strong> If the bot is already connected to WhatsApp, no QR code will be generated.</p>
+              <p>To generate a new QR code, you need to logout from WhatsApp first by deleting the auth folder.</p>
+            </div>
           </div>
         </body>
         </html>
