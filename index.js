@@ -339,16 +339,16 @@ async function startBot() {
       const question = q[0];
 
       // ── Generate & send poster ───────────────────────────────────────────
-      await generatePoster(question);
-
-      // Read the generated PNG as a buffer (works in Docker — no relative path issues)
-      const posterPath = "/app/daily.png";
-      const fallbackPath = "./daily.png";
       let imageBuffer = null;
       try {
-        imageBuffer = fs.readFileSync(fs.existsSync(posterPath) ? posterPath : fallbackPath);
-      } catch (readErr) {
-        console.log("❌ Could not read poster file:", readErr.message);
+        imageBuffer = await generatePoster(question);
+      } catch (posterErr) {
+        console.log("❌ Poster generation failed:", posterErr.message);
+        return;
+      }
+
+      if (!imageBuffer) {
+        console.log("❌ Poster returned empty buffer");
         return;
       }
 

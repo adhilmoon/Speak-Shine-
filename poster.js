@@ -342,5 +342,8 @@ export default async function generatePoster(question) {
   ctx.fillStyle = bottomLine;
   ctx.fillRect(0, CANVAS_H - 4, W, 4);
 
-  fs.writeFileSync("./daily.png", canvas.toBuffer("image/png"));
+  const pngBuffer = canvas.toBuffer("image/png");
+  // Also write to disk for any legacy callers that still read the file
+  try { fs.writeFileSync("./daily.png", pngBuffer); } catch (_) {}
+  return pngBuffer;
 }
