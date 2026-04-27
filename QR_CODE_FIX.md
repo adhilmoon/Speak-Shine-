@@ -6,6 +6,7 @@ The QR code page at `/api/qr` was showing "Waiting for QR Code..." even though t
 1. The bot (index.js) and API server (api/server.js) run as **separate processes**
 2. They don't share memory, so the `updateQR()` function was only updating a local variable in the bot process
 3. The API server couldn't access the QR code data from the bot process
+4. The `updateQR()` function was made async but wasn't being awaited properly
 
 ## Solution
 Implemented **Redis as a shared storage** mechanism to allow both processes to communicate:
@@ -13,17 +14,22 @@ Implemented **Redis as a shared storage** mechanism to allow both processes to c
 ### Changes Made
 
 1. **Updated `api/routes/qr.js`**:
-   - Modified `updateQR()` to store QR data in Redis
+   - Modified `updateQR()` to be async and store QR data in Redis
    - Modified the GET endpoint to retrieve QR data from Redis first
    - Falls back to in-memory storage if Redis is unavailable
 
-2. **How it works**:
+2. **Updated `index.js`**:
+   - Made the `connection.update` event handler async
+   - Added `await` when calling `updateQR(qr)`
+   - This ensures the QR code is properly stored in Redis before continuing
+
+3. **How it works**:
    ```
    Bot Process (index.js)
    ↓
    Generates QR code
    ↓
-   Calls updateQR(qrData)
+   Calls await updateQR(qrData)
    ↓
    Stores in Redis with key: 'whatsapp:qr:data'
    ↓
@@ -36,7 +42,7 @@ Implemented **Redis as a shared storage** mechanism to allow both processes to c
    Displays QR code
    ```
 
-3. **Redis Keys Used**:
+4. **Redis Keys Used**:
    - `whatsapp:qr:data` - The QR code string
    - `whatsapp:qr:timestamp` - When the QR was generated
    - Both keys expire after 120 seconds (2 minutes)
@@ -58,3 +64,6 @@ REDIS_URL=rediss://default:password@your-redis-host:6379
 ```
 
 Already configured in your `.env` file.
+
+## Deployment Status
+✅ Fixed and deployed - QR codes should now work correctly on Railway
