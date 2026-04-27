@@ -341,8 +341,25 @@ async function startBot() {
       // ── Generate & send poster ───────────────────────────────────────────
       await generatePoster(question);
 
+      // Read the generated PNG as a buffer (works in Docker — no relative path issues)
+      const posterPath = "/app/daily.png";
+      const fallbackPath = "./daily.png";
+      let imageBuffer = null;
+      try {
+        imageBuffer = fs.readFileSync(fs.existsSync(posterPath) ? posterPath : fallbackPath);
+      } catch (readErr) {
+        console.log("❌ Could not read poster file:", readErr.message);
+        return;
+      }
+
+      if (!TARGET_GROUP) {
+        console.log("❌ TARGET_GROUP not set — cannot send poster");
+        return;
+      }
+
       const sent = await safeSend(sock, TARGET_GROUP, {
-        image: { url: "./daily.png" },
+        image: imageBuffer,
+        mimetype: "image/png",
       });
 
       if (sent) {
