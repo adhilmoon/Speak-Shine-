@@ -1222,6 +1222,7 @@ async function startBot() {
       // ðŸ“Š STREAK REPORT
       if (cmd.startsWith("/report")) {
         console.log(`[/report] Command received from ${user} in ${chatId}`);
+        try {
         const botJid = sock.user?.id?.replace(/:.*@/, "@") ?? "";
         const users = await User.find({ userId: { $exists: true, $nin: [null, ""] } });
 
@@ -1270,6 +1271,10 @@ async function startBot() {
             text: chunk,
             mentions: mentionJids,
           });
+        }
+        } catch (err) {
+          console.log("[/report] Error:", err);
+          await safeSend(sock, chatId, { text: "❌ Report error: " + err.message });
         }
         return;
       }
