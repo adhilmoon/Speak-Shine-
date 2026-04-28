@@ -513,10 +513,9 @@ function UploadCard({ onAnalysisStarted }) {
     const f = e.target.files[0];
     if (!f) return;
     if (f.size > 350 * 1024 * 1024) { setError("File size must be less than 350MB."); return; }
-    if (f.size > 150 * 1024 * 1024) {
-      setError(`⚠️ This file is ${(f.size/1024/1024).toFixed(0)}MB. Files above 150MB may fail analysis due to server memory limits. For best results, use a shorter or lower-quality recording.`);
-    } else {
-      setError(null);
+    if (f.size > 110 * 1024 * 1024) {
+      setError(`⚠️ This file is ${(f.size/1024/1024).toFixed(0)}MB. Maximum allowed is 110MB. Please record a shorter or lower-quality video.`);
+      return;
     }
     setFile(f);
   };
@@ -570,7 +569,7 @@ function UploadCard({ onAnalysisStarted }) {
     <div className="card">
       <div className="section-title">📹 Upload Video for Analysis</div>
       <p style={{ color: "var(--muted)", marginBottom: "1rem" }}>
-        Minimum 1 minute · Max 5 minutes · Up to 150MB recommended · MP4, MOV, AVI, WEBM, 3GP · Reports stored 18 hours
+        Minimum 1 minute · Max 5 minutes · Up to 110MB · MP4, MOV, AVI, WEBM, 3GP · Reports stored 18 hours
       </p>
       <div className="upload-area">
         <input id="video-input" type="file"

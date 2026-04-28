@@ -95,8 +95,8 @@ router.post("/confirm", authMiddleware, async (req, res) => {
 
   // ── Check file size before accepting for analysis ────────────────────────
   // Railway has limited RAM — large files cause OOM crashes during download+processing
-  // Safe limit: 150MB (leaves headroom for Node.js + ffmpeg + other processes)
-  const MAX_ANALYSIS_MB = 150;
+  // Safe limit: 110MB (leaves headroom for Node.js + ffmpeg + other processes)
+  const MAX_ANALYSIS_MB = 110;
   try {
     const headRes = await fetch(publicUrl, { method: "HEAD" });
     const contentLength = parseInt(headRes.headers.get("content-length") || "0", 10);
