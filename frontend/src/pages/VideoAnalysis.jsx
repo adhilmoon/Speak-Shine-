@@ -29,6 +29,18 @@ export default function VideoAnalysis() {
     }).catch(() => {});
   }, []);
 
+  // Auto-refresh reports table when there are processing reports
+  useEffect(() => {
+    const hasProcessing = myReports.some(r => r.status === "processing");
+    if (!hasProcessing) return;
+
+    const interval = setInterval(() => {
+      loadMyReports();
+    }, 3000); // Refresh every 3 seconds
+
+    return () => clearInterval(interval);
+  }, [myReports]);
+
   // SSE for real-time progress
   useEffect(() => {
     if (!reportId || !report || report.status !== "processing") return;
@@ -264,10 +276,21 @@ export default function VideoAnalysis() {
                             className="btn-primary" 
                             onClick={async () => {
                               try {
+                                // Optimistically update UI
+                                setMyReports(prev => prev.map(report => 
+                                  report._id === r._id 
+                                    ? { ...report, status: "processing" }
+                                    : report
+                                ));
+                                
                                 await api.post(`/video/retry/${r._id}`);
-                                loadMyReports();
+                                
+                                // Load fresh data and view the report
+                                await loadMyReports();
                                 viewReport(r._id);
                               } catch (err) {
+                                // Revert on error
+                                loadMyReports();
                                 setModal({ 
                                   type: "alert", 
                                   title: "Error", 
