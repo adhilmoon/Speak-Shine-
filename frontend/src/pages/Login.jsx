@@ -87,7 +87,7 @@ export default function Login({ loginFor = "user", showRegister = false }) {
           </div>
         )}
 
-        <form onSubmit={submit} noValidate>
+        <form onSubmit={submit} noValidate autoComplete="off">
           <div className="form-group">
             <label className="form-label">Phone Number</label>
             <input
@@ -97,7 +97,7 @@ export default function Login({ loginFor = "user", showRegister = false }) {
               value={form.phone}
               onChange={e => { setForm({ ...form, phone: e.target.value }); clearFieldError("phone"); setError(""); }}
               style={fieldError.phone ? { borderColor: "var(--danger)" } : {}}
-              autoComplete="username"
+              autoComplete="tel"
             />
             {fieldError.phone && (
               <div style={{ color: "var(--danger)", fontSize: "0.78rem", marginTop: "0.3rem" }}>
