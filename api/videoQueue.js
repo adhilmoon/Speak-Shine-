@@ -222,8 +222,6 @@ export function estimateWait(position) {
 }
 
 // ── Startup recovery ─────────────────────────────────────────────────────────
-// On server boot, find any VideoReports stuck in "processing" (from a previous
-// crash) and re-enqueue them from R2 so they complete automatically.
 export async function recoverStuckJobs() {
   try {
     const stuck = await VideoReport.find({ status: "processing" }).lean();
@@ -235,8 +233,19 @@ export async function recoverStuckJobs() {
     console.log(`[Queue] Recovering ${stuck.length} stuck job(s) from previous session…`);
 
     for (const report of stuck) {
+      const retries = report.retryCount || 0;
+
+      // Give up after 3 attempts — this job is causing crashes
+      if (retries >= 3) {
+        await VideoReport.findByIdAndUpdate(report._id, {
+          status: "failed",
+          errorMessage: "Processing failed after 3 attempts. The video may be too large or corrupted. Please re-upload.",
+        });
+        console.log(`[Queue] ${report._id} — exceeded max retries (${retries}), marked failed`);
+        continue;
+      }
+
       if (!report.videoUrl || !report.videoKey) {
-        // No video in R2 — mark as failed, nothing we can do
         await VideoReport.findByIdAndUpdate(report._id, {
           status: "failed",
           errorMessage: "Server restarted before processing could complete. Please re-upload.",
@@ -245,8 +254,10 @@ export async function recoverStuckJobs() {
         continue;
       }
 
-      // Has R2 video — re-download and re-enqueue
-      console.log(`[Queue] Re-enqueuing ${report._id} from R2…`);
+      // Increment retry count before re-enqueuing
+      await VideoReport.findByIdAndUpdate(report._id, { $inc: { retryCount: 1 } });
+
+      console.log(`[Queue] Re-enqueuing ${report._id} from R2 (attempt ${retries + 1}/3)…`);
       enqueueRetry(report._id, report.videoUrl, report.phone, report.uploaderName || report.phone)
         .catch(err => console.error(`[Queue] Recovery failed for ${report._id}:`, err.message));
     }

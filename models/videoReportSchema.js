@@ -83,6 +83,7 @@ const videoReportSchema = new mongoose.Schema({
     default: "processing",
   },
   errorMessage: String,
+  retryCount: { type: Number, default: 0 }, // how many times recovery has been attempted
 
   // R2 video storage
   videoUrl:   { type: String, default: null },  // public CDN URL
