@@ -287,13 +287,47 @@ router.get("/debug-report", authMiddleware, requireRole("admin"), async (req, re
 // POST /api/dashboard/generate-report-now — manually trigger report generation (admin only, for testing)
 router.post("/generate-report-now", authMiddleware, requireRole("admin"), async (req, res) => {
   try {
-    // Import the function dynamically
     const { generateDailyReports } = await import("../scheduler.js");
-    
-    // Generate reports
     await generateDailyReports();
-    
     res.json({ success: true, message: "Daily reports generated successfully" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/dashboard/demo-monthly-reflection — force monthly reflection mode ON (admin only, for testing)
+router.post("/demo-monthly-reflection", authMiddleware, requireRole("admin"), async (req, res) => {
+  try {
+    const { MONTHLY_REFLECTION_QUESTIONS, MONTHLY_REFLECTION_TOPIC, MONTHLY_REFLECTION_CATEGORY } = await import("../scheduler.js");
+    const reflectionText = MONTHLY_REFLECTION_QUESTIONS.map((q, i) => `${i + 1}. ${q}`).join("\n");
+    await Status.updateOne({}, {
+      $set: {
+        questionSentToday: true,
+        isMonthlyReflectionDay: true,
+        todayTopic: MONTHLY_REFLECTION_TOPIC,
+        todayQuestion: reflectionText,
+        todayCategory: MONTHLY_REFLECTION_CATEGORY,
+      }
+    }, { upsert: true });
+    res.json({ success: true, message: "Monthly reflection mode activated — refresh the app to see it" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/dashboard/demo-monthly-reflection-off — turn off monthly reflection mode (admin only)
+router.post("/demo-monthly-reflection-off", authMiddleware, requireRole("admin"), async (req, res) => {
+  try {
+    await Status.updateOne({}, {
+      $set: {
+        isMonthlyReflectionDay: false,
+        questionSentToday: false,
+        todayTopic: null,
+        todayQuestion: null,
+        todayCategory: null,
+      }
+    });
+    res.json({ success: true, message: "Monthly reflection mode turned off" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

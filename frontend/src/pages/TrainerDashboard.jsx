@@ -453,6 +453,46 @@ export default function TrainerDashboard() {
               </div>
             ))}
           </div>
+
+          {/* Monthly Reflection Demo */}
+          <div style={{marginTop:"1.5rem"}}>
+            <div className="section-title" style={{fontSize:"0.95rem",marginBottom:"0.5rem"}}>🌟 Monthly Reflection Demo</div>
+            <p style={{color:"var(--muted)",fontSize:"0.82rem",marginBottom:"1rem"}}>
+              Preview how the monthly reflection looks for students. Toggle it on/off without affecting real data.
+            </p>
+            <div style={{display:"flex",gap:"0.75rem"}}>
+              <button
+                className="btn-primary"
+                style={{flex:1,fontSize:"0.85rem"}}
+                disabled={resetting==="reflection-on"}
+                onClick={async()=>{
+                  setResetting("reflection-on");
+                  try{
+                    await api.post("/dashboard/demo-monthly-reflection");
+                    msg("✅ Monthly reflection mode ON — open User Dashboard to see it");
+                  } catch(e){ msg(e?.response?.data?.error||"Failed","danger"); }
+                  finally{ setResetting(""); }
+                }}
+              >
+                {resetting==="reflection-on" ? "Activating…" : "▶ Turn ON (Demo)"}
+              </button>
+              <button
+                className="btn-secondary"
+                style={{flex:1,fontSize:"0.85rem"}}
+                disabled={resetting==="reflection-off"}
+                onClick={async()=>{
+                  setResetting("reflection-off");
+                  try{
+                    await api.post("/dashboard/demo-monthly-reflection-off");
+                    msg("Monthly reflection mode OFF");
+                  } catch(e){ msg(e?.response?.data?.error||"Failed","danger"); }
+                  finally{ setResetting(""); }
+                }}
+              >
+                {resetting==="reflection-off" ? "Turning off…" : "⏹ Turn OFF"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
