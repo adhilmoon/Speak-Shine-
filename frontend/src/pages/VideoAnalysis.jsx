@@ -402,14 +402,15 @@ function RecordCard({ onAnalysisStarted }) {
     setError(null);
     try {
       // ── Option 1: browser-level noise suppression via getUserMedia constraints ──
+      const isMobile = window.innerWidth < 600;
       const constraints = {
         video: {
           ...(camId ? { deviceId: { exact: camId } } : {}),
-          width: { ideal: 1920, min: 1280 },
-          height: { ideal: 1080, min: 720 },
-          aspectRatio: { ideal: 16 / 9 },
+          width:  isMobile ? { ideal: 1080 } : { ideal: 1920, min: 1280 },
+          height: isMobile ? { ideal: 1920 } : { ideal: 1080, min: 720 },
+          aspectRatio: { ideal: isMobile ? 9/16 : 16/9 },
           frameRate: { ideal: 30, min: 24 },
-          facingMode: "user",
+          facingMode: isMobile ? "user" : "user",
         },
         audio: {
           ...(micId ? { deviceId: { exact: micId } } : {}),
@@ -612,18 +613,38 @@ function RecordCard({ onAnalysisStarted }) {
             </div>
           </div>
 
-          {/* Today's poster only — poster already contains topic + question */}
-          {question?.posterImage && (
+          {/* Today's question — text + poster */}
+          {question && (
             <div style={{ marginBottom: "1.25rem" }}>
               <div style={{ fontSize: "0.65rem", color: "var(--muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.5rem" }}>
                 📅 Today's Question
               </div>
-              <img src={question.posterImage} alt="Today's poster"
-                onClick={() => setLightbox(true)}
-                onMouseOver={e => e.currentTarget.style.transform = "scale(1.02)"}
-                onMouseOut={e => e.currentTarget.style.transform = "scale(1)"}
-                style={{ width: "100%", maxWidth: "400px", borderRadius: "12px", border: "2px solid var(--border)", objectFit: "contain", cursor: "pointer", transition: "transform 0.2s", display: "block", margin: "0 auto" }} />
-              <p style={{ fontSize: "0.72rem", color: "var(--muted)", marginTop: "0.4rem", textAlign: "center" }}>Click to enlarge</p>
+              {/* Question text card */}
+              <div style={{
+                background: "linear-gradient(135deg, rgba(124,111,255,0.12), rgba(79,70,229,0.08))",
+                border: "1px solid rgba(124,111,255,0.25)",
+                borderRadius: 12, padding: "0.9rem 1rem", marginBottom: "0.75rem",
+              }}>
+                {question.topic && (
+                  <div style={{ fontSize: "0.72rem", color: "var(--muted)", marginBottom: "0.35rem" }}>
+                    🏷️ {question.topic}
+                  </div>
+                )}
+                <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "var(--text)", lineHeight: 1.55 }}>
+                  ❓ {question.question}
+                </div>
+              </div>
+              {/* Poster thumbnail */}
+              {question.posterImage && (
+                <>
+                  <img src={question.posterImage} alt="Today's poster"
+                    onClick={() => setLightbox(true)}
+                    onMouseOver={e => e.currentTarget.style.transform = "scale(1.02)"}
+                    onMouseOut={e => e.currentTarget.style.transform = "scale(1)"}
+                    style={{ width: "100%", maxWidth: "400px", borderRadius: "12px", border: "2px solid var(--border)", objectFit: "contain", cursor: "pointer", transition: "transform 0.2s", display: "block", margin: "0 auto" }} />
+                  <p style={{ fontSize: "0.72rem", color: "var(--muted)", marginTop: "0.4rem", textAlign: "center" }}>Click to enlarge</p>
+                </>
+              )}
             </div>
           )}
 
@@ -685,11 +706,38 @@ function RecordCard({ onAnalysisStarted }) {
 
       {/* ── RECORDING ── */}
       {step === "recording" && (
-        <div className="rec-layout" style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: "1rem", alignItems: "start" }}>
-          {/* Camera feed */}
-          <div style={{ position: "relative" }}>
+        <div>
+          {/* Today's question banner — always visible above video */}
+          {question && (
+            <div style={{
+              background: "linear-gradient(135deg, rgba(124,111,255,0.12), rgba(79,70,229,0.08))",
+              border: "1px solid rgba(124,111,255,0.25)",
+              borderRadius: 12, padding: "0.85rem 1rem", marginBottom: "0.85rem",
+            }}>
+              {question.topic && (
+                <div style={{ fontSize: "0.7rem", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.3rem" }}>
+                  📌 {question.topic}
+                </div>
+              )}
+              <div style={{ fontSize: "0.92rem", fontWeight: 600, color: "var(--text)", lineHeight: 1.5 }}>
+                ❓ {question.question}
+              </div>
+            </div>
+          )}
+
+          {/* Video — 9:16 on mobile, 16:9 on desktop */}
+          <div style={{ position: "relative", marginBottom: "0.85rem" }}>
             <video ref={liveVideoRef} autoPlay muted playsInline
-              style={{ width: "100%", borderRadius: "12px", background: "#000", aspectRatio: "16/9", objectFit: "cover", display: "block" }} />
+              style={{
+                width: "100%",
+                borderRadius: "12px",
+                background: "#000",
+                objectFit: "cover",
+                display: "block",
+                aspectRatio: window.innerWidth < 600 ? "9/16" : "16/9",
+                maxHeight: window.innerWidth < 600 ? "70vh" : "none",
+              }} />
+
             {/* REC badge */}
             <div style={{
               position: "absolute", top: "12px", left: "12px",
@@ -699,9 +747,10 @@ function RecordCard({ onAnalysisStarted }) {
             }}>
               <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#fff",
                 animation: isPaused ? "none" : "blink 1s infinite" }} />
-              {isPaused ? "PAUSED" : "REC"} {fmtTime(elapsed)}
+              {isPaused ? "PAUSED" : "REC"}
             </div>
-            {/* NC status badge */}
+
+            {/* NC badge */}
             {ncStatus === "active" && (
               <div style={{
                 position: "absolute", top: "12px", right: "12px",
@@ -710,6 +759,7 @@ function RecordCard({ onAnalysisStarted }) {
                 fontSize: "0.68rem", fontWeight: 700,
               }}>🎙️ AI NC</div>
             )}
+
             {/* Timer bar */}
             <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "4px", background: "rgba(255,255,255,0.15)", borderRadius: "0 0 12px 12px" }}>
               <div style={{ height: "100%", width: `${(elapsed / MAX_SECONDS) * 100}%`,
@@ -717,36 +767,40 @@ function RecordCard({ onAnalysisStarted }) {
             </div>
           </div>
 
-          {/* Side panel — poster only */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-            {/* Poster — click to enlarge */}
-            {question?.posterImage && (
-              <img src={question.posterImage} alt="Today's poster"
-                onClick={() => setLightbox(true)}
-                onMouseOver={e => e.currentTarget.style.transform = "scale(1.03)"}
-                onMouseOut={e => e.currentTarget.style.transform = "scale(1)"}
-                style={{ width: "100%", borderRadius: "12px", border: "2px solid var(--border2)", objectFit: "contain", cursor: "pointer", transition: "transform 0.2s", display: "block" }} />
-            )}
-
-            <div style={{ background: "var(--card2)", border: "1px solid var(--border2)", borderRadius: "12px", padding: "1rem" }}>
-              <div style={{ fontSize: "0.65rem", color: "var(--success)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.5rem" }}>
-                💡 Tips
+          {/* Controls below video */}
+          <div style={{
+            background: "var(--card2)", border: "1px solid var(--border2)",
+            borderRadius: 14, padding: "1rem", display: "flex", flexDirection: "column", gap: "0.85rem",
+          }}>
+            {/* Timer display */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <span style={{
+                  width: 10, height: 10, borderRadius: "50%",
+                  background: isPaused ? "var(--warning)" : "var(--danger)",
+                  animation: isPaused ? "none" : "blink 1s infinite",
+                  display: "inline-block",
+                }} />
+                <span style={{ fontSize: "1.5rem", fontWeight: 800, fontVariantNumeric: "tabular-nums", color: elapsed > 240 ? "var(--danger)" : "var(--text)" }}>
+                  {fmtTime(elapsed)}
+                </span>
               </div>
-              <ul style={{ paddingLeft: "1.1rem", margin: 0, fontSize: "0.82rem", color: "var(--text2)", lineHeight: 1.7 }}>
-                <li>Speak clearly and at a steady pace</li>
-                <li>Look directly at the camera</li>
-                <li>Sit up straight, good posture</li>
-                <li>Aim for 1–3 minutes</li>
-              </ul>
+              <span style={{ fontSize: "0.8rem", color: "var(--muted)" }}>/ {fmtTime(MAX_SECONDS)} max</span>
             </div>
 
-            <div style={{ textAlign: "center", fontSize: "0.82rem", color: elapsed > 240 ? "var(--danger)" : "var(--muted)" }}>
-              {fmtTime(elapsed)} / {fmtTime(MAX_SECONDS)}
+            {/* Progress bar */}
+            <div style={{ background: "var(--bg)", borderRadius: 6, height: 6, overflow: "hidden" }}>
+              <div style={{
+                height: "100%", width: `${(elapsed / MAX_SECONDS) * 100}%`,
+                background: elapsed > 240 ? "var(--danger)" : "var(--primary)",
+                borderRadius: 6, transition: "width 1s linear",
+              }} />
             </div>
 
-            <div style={{ display: "flex", gap: "0.5rem" }}>
+            {/* Buttons */}
+            <div style={{ display: "flex", gap: "0.6rem" }}>
               <button onClick={togglePause} style={{
-                flex: 1, padding: "0.65rem", borderRadius: "10px", fontWeight: 600, fontSize: "0.875rem",
+                flex: 1, padding: "0.75rem", borderRadius: 10, fontWeight: 700, fontSize: "0.9rem",
                 background: isPaused ? "rgba(34,211,160,0.15)" : "rgba(245,158,11,0.15)",
                 border: `1px solid ${isPaused ? "rgba(34,211,160,0.3)" : "rgba(245,158,11,0.3)"}`,
                 color: isPaused ? "var(--success)" : "var(--warning)", cursor: "pointer",
@@ -754,13 +808,20 @@ function RecordCard({ onAnalysisStarted }) {
                 {isPaused ? "▶ Resume" : "⏸ Pause"}
               </button>
               <button onClick={stopRecording} style={{
-                flex: 1, padding: "0.65rem", borderRadius: "10px", fontWeight: 600, fontSize: "0.875rem",
+                flex: 1, padding: "0.75rem", borderRadius: 10, fontWeight: 700, fontSize: "0.9rem",
                 background: "rgba(248,113,113,0.15)", border: "1px solid rgba(248,113,113,0.3)",
                 color: "var(--danger)", cursor: "pointer",
               }}>
-                ⏹ Stop
+                ⏹ Stop & Preview
               </button>
             </div>
+
+            {/* Min time hint */}
+            {elapsed < 60 && (
+              <div style={{ fontSize: "0.78rem", color: "var(--muted)", textAlign: "center" }}>
+                ⏱️ Keep going — minimum 1 minute required ({60 - elapsed}s left)
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -768,6 +829,16 @@ function RecordCard({ onAnalysisStarted }) {
       {/* ── PREVIEW ── */}
       {step === "preview" && (
         <div>
+          {question && (
+            <div style={{
+              background: "linear-gradient(135deg, rgba(124,111,255,0.12), rgba(79,70,229,0.08))",
+              border: "1px solid rgba(124,111,255,0.25)",
+              borderRadius: 12, padding: "0.85rem 1rem", marginBottom: "0.85rem",
+            }}>
+              {question.topic && <div style={{ fontSize: "0.7rem", color: "var(--muted)", marginBottom: "0.25rem" }}>🏷️ {question.topic}</div>}
+              <div style={{ fontSize: "0.9rem", fontWeight: 600, color: "var(--text)", lineHeight: 1.5 }}>❓ {question.question}</div>
+            </div>
+          )}
           <p style={{ color: "var(--muted)", marginBottom: "1rem", fontSize: "0.9rem" }}>
             Review your recording before submitting for analysis.
             {elapsed < 60 && <span style={{ color: "var(--danger)" }}> ⚠️ Too short ({fmtTime(elapsed)}) — minimum 1 minute.</span>}
