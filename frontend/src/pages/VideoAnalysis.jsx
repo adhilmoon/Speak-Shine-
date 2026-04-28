@@ -255,8 +255,33 @@ export default function VideoAnalysis() {
                       </td>
                       <td style={{ color: "var(--muted)", fontSize: "0.9rem" }}>{formatTimeRemaining(r.expiresAt)}</td>
                       <td>
-                        <button className="btn-secondary" onClick={() => viewReport(r._id)}
-                          disabled={r.status !== "completed"} style={{ marginRight: "0.5rem" }}>View</button>
+                        {r.status === "completed" && (
+                          <button className="btn-secondary" onClick={() => viewReport(r._id)}
+                            style={{ marginRight: "0.5rem" }}>View</button>
+                        )}
+                        {r.status === "failed" && (
+                          <button 
+                            className="btn-primary" 
+                            onClick={async () => {
+                              try {
+                                await api.post(`/video/retry/${r._id}`);
+                                loadMyReports();
+                                viewReport(r._id);
+                              } catch (err) {
+                                setModal({ 
+                                  type: "alert", 
+                                  title: "Error", 
+                                  message: err.response?.data?.error || "Retry failed", 
+                                  confirmText: "OK", 
+                                  onConfirm: () => setModal(null) 
+                                });
+                              }
+                            }}
+                            style={{ marginRight: "0.5rem" }}
+                          >
+                            🔄 Retry
+                          </button>
+                        )}
                         <button className="btn-danger" onClick={() => deleteReport(r._id)}>Delete</button>
                       </td>
                     </tr>
