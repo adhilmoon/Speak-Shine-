@@ -611,6 +611,14 @@ function TrainerLivePanel() {
     finally { setBusy(b => ({ ...b, [id]: null })); }
   };
 
+  const cancel = async (id) => {
+    if (!confirm("Cancel this scheduled session? This cannot be undone.")) return;
+    setBusy(b => ({ ...b, [id]: "cancelling" }));
+    try { await api.delete(`/live-sessions/${id}`); notify("Session cancelled."); load(); }
+    catch (err) { notify(err.response?.data?.error || "Failed to cancel", "error"); }
+    finally { setBusy(b => ({ ...b, [id]: null })); }
+  };
+
   const live      = sessions.filter(s => s.status === "live");
   const scheduled = sessions.filter(s => s.status === "scheduled");
   const ended     = sessions.filter(s => s.status === "ended");
@@ -666,7 +674,7 @@ function TrainerLivePanel() {
 
       {scheduled.length > 0 && <div style={{ marginBottom: "1.5rem" }}>
         <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#60a5fa", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.75rem" }}>📅 Upcoming</div>
-        {scheduled.map(s => <TrainerSessionCard key={s._id} s={s} onStart={start} onEnd={end} busy={busy} navigate={navigate} />)}
+        {scheduled.map(s => <TrainerSessionCard key={s._id} s={s} onStart={start} onEnd={end} onCancel={cancel} busy={busy} navigate={navigate} />)}
       </div>}
 
       {ended.length > 0 && <div>
@@ -684,7 +692,7 @@ function TrainerLivePanel() {
   );
 }
 
-function TrainerSessionCard({ s, onStart, onEnd, busy, navigate }) {
+function TrainerSessionCard({ s, onStart, onEnd, onCancel, busy, navigate }) {
   const isLive = s.status === "live", isScheduled = s.status === "scheduled";
   return (
     <div style={{
@@ -707,6 +715,11 @@ function TrainerSessionCard({ s, onStart, onEnd, busy, navigate }) {
         </div>
         <div style={{ display: "flex", gap: "0.5rem", flexShrink: 0 }}>
           {isScheduled && <button onClick={() => onStart(s._id)} disabled={busy[s._id] === "starting"} style={{ background: "linear-gradient(135deg,#4ade80,#22c55e)", color: "#065f46", border: "none", borderRadius: 10, padding: "0.5rem 1rem", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer" }}>{busy[s._id] === "starting" ? "Starting…" : "🔴 Go Live"}</button>}
+          {isScheduled && onCancel && (
+            <button onClick={() => onCancel(s._id)} disabled={busy[s._id] === "cancelling"} style={{ background: "rgba(248,113,113,0.12)", border: "1px solid rgba(248,113,113,0.3)", color: "#f87171", borderRadius: 10, padding: "0.5rem 0.85rem", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer" }}>
+              {busy[s._id] === "cancelling" ? "Cancelling…" : "✕ Cancel"}
+            </button>
+          )}
           {isLive && <>
             <button onClick={() => window.open(`/live/${s._id}`, "_blank")} style={{ background: "linear-gradient(135deg,#7c6fff,#4f46e5)", color: "#fff", border: "none", borderRadius: 10, padding: "0.5rem 1rem", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer" }}>📹 Join</button>
             <button onClick={() => onEnd(s._id)} disabled={busy[s._id] === "ending"} style={{ background: "rgba(248,113,113,0.15)", border: "1px solid rgba(248,113,113,0.3)", color: "#f87171", borderRadius: 10, padding: "0.5rem 0.85rem", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer" }}>{busy[s._id] === "ending" ? "Ending…" : "⏹ End"}</button>

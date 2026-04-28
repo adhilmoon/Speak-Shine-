@@ -901,6 +901,14 @@ function LiveSessionsPanel() {
     finally { setBusy(b => ({ ...b, [id]: null })); }
   };
 
+  const cancel = async (id) => {
+    if (!confirm("Cancel this scheduled session? This cannot be undone.")) return;
+    setBusy(b => ({ ...b, [id]: "cancelling" }));
+    try { await api.delete(`/live-sessions/${id}`); notify("Session cancelled."); load(); }
+    catch (err) { notify(err.response?.data?.error || "Failed to cancel", "error"); }
+    finally { setBusy(b => ({ ...b, [id]: null })); }
+  };
+
   const statusConfig = {
     scheduled: { color: "#60a5fa", bg: "rgba(96,165,250,0.1)", label: "Scheduled", icon: "📅" },
     live:      { color: "#4ade80", bg: "rgba(74,222,128,0.1)", label: "🔴 Live",    icon: "🔴" },
@@ -1002,7 +1010,7 @@ function LiveSessionsPanel() {
           <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#60a5fa", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.75rem" }}>
             📅 Upcoming
           </div>
-          {scheduledSessions.map(s => <SessionCard key={s._id} s={s} onStart={start} onEnd={end} busy={busy} navigate={navigate} />)}
+          {scheduledSessions.map(s => <SessionCard key={s._id} s={s} onStart={start} onEnd={end} onCancel={cancel} busy={busy} navigate={navigate} />)}
         </div>
       )}
 
@@ -1027,7 +1035,7 @@ function LiveSessionsPanel() {
   );
 }
 
-function SessionCard({ s, onStart, onEnd, busy, navigate }) {
+function SessionCard({ s, onStart, onEnd, onCancel, busy, navigate }) {
   const isLive      = s.status === "live";
   const isScheduled = s.status === "scheduled";
   const isEnded     = s.status === "ended";
@@ -1092,6 +1100,21 @@ function SessionCard({ s, onStart, onEnd, busy, navigate }) {
               }}
             >
               {busy[s._id] === "starting" ? "Starting…" : "🔴 Go Live"}
+            </button>
+          )}
+          {isScheduled && onCancel && (
+            <button
+              onClick={() => onCancel(s._id)}
+              disabled={busy[s._id] === "cancelling"}
+              style={{
+                background: "rgba(248,113,113,0.12)",
+                border: "1px solid rgba(248,113,113,0.3)",
+                color: "#f87171", borderRadius: 10,
+                padding: "0.5rem 0.85rem", fontWeight: 700, fontSize: "0.82rem",
+                cursor: "pointer", whiteSpace: "nowrap",
+              }}
+            >
+              {busy[s._id] === "cancelling" ? "Cancelling…" : "✕ Cancel"}
             </button>
           )}
           {isLive && (

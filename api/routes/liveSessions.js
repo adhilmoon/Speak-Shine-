@@ -148,6 +148,20 @@ router.post("/:id/end", auth, async (req, res) => {
   }
 });
 
+// DELETE /api/live-sessions/:id — cancel a scheduled session (admin/trainer)
+router.delete("/:id", auth, async (req, res) => {
+  if (!["admin", "trainer"].includes(req.user.role)) return res.status(403).json({ error: "Admin or Trainer only" });
+  try {
+    const session = await LiveSession.findById(req.params.id);
+    if (!session) return res.status(404).json({ error: "Session not found" });
+    if (session.status === "live") return res.status(409).json({ error: "Cannot cancel a live session. End it first." });
+    await LiveSession.deleteOne({ _id: req.params.id });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/live-sessions/:id/mute/:participantIdentity
 router.post("/:id/mute/:participantIdentity", auth, async (req, res) => {
   if (req.user.role !== "admin") return res.status(403).json({ error: "Admin only" });
