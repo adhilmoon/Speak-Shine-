@@ -139,6 +139,30 @@ async function dailyReset() {
   try {
     console.log("[Scheduler] 🔄 Running daily reset...");
 
+    // ── Streak calculation (before resetting completed flag) ─────────────
+    // Increment streak for users who submitted today
+    await User.updateMany({ completed: true }, { $inc: { streak: 1 } });
+    console.log("[Scheduler] ✅ Incremented streak for completed users");
+
+    // Reset streak to 0 for users who missed today
+    await User.updateMany({ completed: false }, { $set: { streak: 0 } });
+    console.log("[Scheduler] ✅ Reset streak for missed users");
+
+    // ── 7-day streak reward: deduct ₹5 from fine ─────────────────────────
+    const STREAK_REWARD_DAYS   = 7;
+    const STREAK_REWARD_AMOUNT = 5;
+    const rewardUsers = await User.find({
+      completed: true,
+      streak: { $gt: 0, $mod: [STREAK_REWARD_DAYS, 0] },
+    }).lean();
+    for (const u of rewardUsers) {
+      const deduct = Math.min(u.fine || 0, STREAK_REWARD_AMOUNT);
+      if (deduct > 0) {
+        await User.updateOne({ _id: u._id }, { $inc: { fine: -deduct } });
+        console.log(`[Scheduler] 🎁 Streak reward: ${u.name || u.phone} -₹${deduct} fine (${u.streak + 1} day streak)`);
+      }
+    }
+
     // Increment weekly/monthly submissions for users who completed today
     await User.updateMany({ completed: true }, { $inc: { weeklySubmissions: 1, monthlySubmissions: 1 } });
     console.log("[Scheduler] ✅ Incremented weekly/monthly submissions");
