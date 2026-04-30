@@ -108,6 +108,20 @@ router.get("/me", authMiddleware, async (req, res) => {
       }).lean();
     }
 
+    // If no WhatsApp user found, create a basic profile from auth data
+    if (!user) {
+      user = {
+        name: req.user.name || "User",
+        phone: phone,
+        feedbackScores: [],
+        streak: 0,
+        fine: 0,
+        completed: false,
+        weeklySubmissions: 0,
+        monthlySubmissions: 0,
+      };
+    }
+
     let status = await Status.findOne().lean();
     const allUsers = await User.find().lean();
     const completed = allUsers.filter(u => u.completed).length;
@@ -139,7 +153,7 @@ router.get("/me", authMiddleware, async (req, res) => {
     }
 
     res.json({
-      profile: user ? {
+      profile: {
         name: user.name,
         feedbackScores: user.feedbackScores || [],
         streak: user.streak || 0,
@@ -148,7 +162,7 @@ router.get("/me", authMiddleware, async (req, res) => {
         weeklySubmissions: user.weeklySubmissions || 0,
         monthlySubmissions: user.monthlySubmissions || 0,
         linkedPhone: user.phone || null,
-      } : null,
+      },
       today: {
         questionSent: status?.questionSentToday || false,
         topic: status?.todayTopic || null,
