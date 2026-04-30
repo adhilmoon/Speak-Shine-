@@ -11,6 +11,43 @@ const cache = new Map();
 const CACHE_TTL = 30_000;
 const CACHEABLE = ["/dashboard", "/dashboard/me", "/users", "/questions", "/live-sessions"];
 
+// Track if we're currently refreshing to avoid multiple refresh calls
+let isRefreshing = false;
+let refreshSubscribers = [];
+
+function subscribeTokenRefresh(cb) {
+  refreshSubscribers.push(cb);
+}
+
+function onTokenRefreshed(token) {
+  refreshSubscribers.forEach(cb => cb(token));
+  refreshSubscribers = [];
+}
+
+async function refreshAccessToken() {
+  const refreshToken = localStorage.getItem("refreshToken");
+  if (!refreshToken) {
+    throw new Error("No refresh token");
+  }
+
+  try {
+    const response = await axios.post(`${BASE_URL}/auth/refresh`, { refreshToken });
+    const { accessToken, refreshToken: newRefreshToken } = response.data;
+    
+    localStorage.setItem("token", accessToken);
+    localStorage.setItem("refreshToken", newRefreshToken);
+    
+    return accessToken;
+  } catch (error) {
+    // Refresh failed, logout user
+    localStorage.removeItem("token");
+    localStorage.removeItem("refreshToken");
+    localStorage.removeItem("user");
+    window.location.href = "/login";
+    throw error;
+  }
+}
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
   if (token) config.headers.Authorization = `Bearer ${token}`;
@@ -37,12 +74,48 @@ api.interceptors.response.use(
     }
     return res;
   },
-  (err) => {
+  async (err) => {
+    const originalRequest = err.config;
+
+    // If token expired and we haven't tried refreshing yet
+    if (err.response?.status === 401 && 
+        err.response?.data?.code === "TOKEN_EXPIRED" && 
+        !originalRequest._retry) {
+      
+      if (isRefreshing) {
+        // Wait for the ongoing refresh to complete
+        return new Promise((resolve) => {
+          subscribeTokenRefresh((token) => {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            resolve(api(originalRequest));
+          });
+        });
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        const newToken = await refreshAccessToken();
+        isRefreshing = false;
+        onTokenRefreshed(newToken);
+        
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        return api(originalRequest);
+      } catch (refreshError) {
+        isRefreshing = false;
+        return Promise.reject(refreshError);
+      }
+    }
+
+    // Other 401 errors (invalid token, etc.) - logout
     if (err.response?.status === 401) {
       localStorage.removeItem("token");
+      localStorage.removeItem("refreshToken");
       localStorage.removeItem("user");
       window.location.href = "/login";
     }
+    
     return Promise.reject(err);
   }
 );

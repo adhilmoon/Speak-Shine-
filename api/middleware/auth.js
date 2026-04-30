@@ -17,9 +17,19 @@ export function authMiddleware(req, res, next) {
   }
   try {
     const decoded = jwt.verify(raw, JWT_SECRET);
+    
+    // Ensure it's an access token (not refresh token)
+    if (decoded.type && decoded.type !== 'access') {
+      return res.status(401).json({ error: "Invalid token type" });
+    }
+    
     req.user = decoded;
     next();
-  } catch {
+  } catch (err) {
+    // Check if token expired
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: "Token expired", code: "TOKEN_EXPIRED" });
+    }
     return res.status(401).json({ error: "Invalid or expired token" });
   }
 }

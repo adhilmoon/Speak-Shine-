@@ -115,6 +115,117 @@ router.post("/send-otp",   otpLimiter, (_req, res) => res.status(403).json({ err
 router.post("/verify-otp", otpLimiter, (_req, res) => res.status(403).json({ error: "Registration is closed. Contact your admin." }));
 router.post("/register",              (_req, res) => res.status(403).json({ error: "Registration is closed. Contact your admin." }));
 
+// ── POST /api/auth/refresh ───────────────────────────────────────────────────
+// Refresh access token using refresh token
+router.post("/refresh", async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+    if (!refreshToken) {
+      return res.status(401).json({ error: "Refresh token required" });
+    }
+
+    // Verify refresh token
+    let decoded;
+    try {
+      decoded = jwt.verify(refreshToken, JWT_SECRET);
+    } catch (err) {
+      return res.status(401).json({ error: "Invalid or expired refresh token" });
+    }
+
+    // Check token type
+    if (decoded.type !== 'refresh') {
+      return res.status(401).json({ error: "Invalid token type" });
+    }
+
+    // Find user and verify refresh token exists in database
+    const auth = await Auth.findById(decoded.id);
+    if (!auth || !auth.isActive) {
+      return res.status(401).json({ error: "Invalid refresh token" });
+    }
+
+    // Check if refresh token exists and hasn't expired
+    const tokenRecord = auth.refreshTokens?.find(
+      rt => rt.token === refreshToken && rt.expiresAt > Date.now()
+    );
+
+    if (!tokenRecord) {
+      // Token not found or expired - possible token theft, revoke all tokens
+      auth.refreshTokens = [];
+      await auth.save();
+      logSecurityEvent('REFRESH_TOKEN_REUSE', { 
+        userId: auth._id, 
+        phone: auth.phone, 
+        ip: req.ip 
+      });
+      return res.status(401).json({ error: "Invalid refresh token. Please login again." });
+    }
+
+    // Remove old refresh token (rotation)
+    auth.refreshTokens = auth.refreshTokens.filter(rt => rt.token !== refreshToken);
+
+    // Issue new access token and refresh token
+    const newAccessToken = jwt.sign(
+      { id: auth._id, phone: auth.phone, role: auth.role, name: auth.name, type: 'access' },
+      JWT_SECRET,
+      { expiresIn: "15m" }
+    );
+
+    const newRefreshToken = jwt.sign(
+      { id: auth._id, phone: auth.phone, type: 'refresh' },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    // Store new refresh token
+    const refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    auth.refreshTokens.push({
+      token: newRefreshToken,
+      expiresAt: refreshTokenExpiry,
+    });
+
+    // Clean up expired tokens
+    auth.refreshTokens = auth.refreshTokens.filter(rt => rt.expiresAt > Date.now());
+
+    await auth.save();
+
+    res.json({
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+      expiresIn: 900, // 15 minutes
+    });
+  } catch (err) {
+    console.error("[Refresh] Error:", err.message);
+    res.status(500).json({ error: "Token refresh failed" });
+  }
+});
+
+// ── POST /api/auth/logout ─────────────────────────────────────────────────────
+// Revoke refresh token
+router.post("/logout", async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+    if (!refreshToken) {
+      return res.json({ success: true, message: "Logged out" });
+    }
+
+    // Decode without verification to get user ID
+    const decoded = jwt.decode(refreshToken);
+    if (decoded?.id) {
+      const auth = await Auth.findById(decoded.id);
+      if (auth) {
+        // Remove this specific refresh token
+        auth.refreshTokens = auth.refreshTokens?.filter(rt => rt.token !== refreshToken) || [];
+        await auth.save();
+      }
+    }
+
+    res.json({ success: true, message: "Logged out successfully" });
+  } catch (err) {
+    console.error("[Logout] Error:", err.message);
+    res.json({ success: true, message: "Logged out" });
+  }
+});
+
 // ── POST /api/auth/login ──────────────────────────────────────────────────────
 router.post("/login", loginLimiter, async (req, res) => {
   try {
@@ -178,16 +289,45 @@ router.post("/login", loginLimiter, async (req, res) => {
     // Reset failed attempts on successful login
     auth.failedLoginAttempts = 0;
     auth.lockUntil = null;
-    await auth.save();
 
     await autoLinkPhone(phone);
 
-    const token = jwt.sign(
-      { id: auth._id, phone, role: auth.role, name: auth.name },
+    // Issue short-lived access token (15 minutes) and long-lived refresh token (7 days)
+    const accessToken = jwt.sign(
+      { id: auth._id, phone, role: auth.role, name: auth.name, type: 'access' },
+      JWT_SECRET,
+      { expiresIn: "15m" }
+    );
+    
+    const refreshToken = jwt.sign(
+      { id: auth._id, phone, type: 'refresh' },
       JWT_SECRET,
       { expiresIn: "7d" }
     );
-    res.json({ token, role: auth.role, name: auth.name, phone });
+    
+    // Store refresh token in database (limit to 5 active tokens per user)
+    const refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    auth.refreshTokens = auth.refreshTokens || [];
+    auth.refreshTokens.push({
+      token: refreshToken,
+      expiresAt: refreshTokenExpiry,
+    });
+    
+    // Keep only the 5 most recent refresh tokens
+    if (auth.refreshTokens.length > 5) {
+      auth.refreshTokens = auth.refreshTokens.slice(-5);
+    }
+    
+    await auth.save();
+
+    res.json({ 
+      accessToken, 
+      refreshToken,
+      expiresIn: 900, // 15 minutes in seconds
+      role: auth.role, 
+      name: auth.name, 
+      phone 
+    });
   } catch (err) {
     console.error("[Login] Error:", err.message);
     res.status(500).json({ error: "Login failed. Please try again." });

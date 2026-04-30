@@ -17,6 +17,13 @@ const authSchema = new mongoose.Schema({
   // Security: OTP expiration and attempt limiting
   otpExpiry: { type: Date, default: null },
   otpAttempts: { type: Number, default: 0 },
+  
+  // Security: Refresh token rotation
+  refreshTokens: [{ 
+    token: String, 
+    expiresAt: Date,
+    createdAt: { type: Date, default: Date.now }
+  }],
 });
 
 export default mongoose.model("Auth", authSchema);
