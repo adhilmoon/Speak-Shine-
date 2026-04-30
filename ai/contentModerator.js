@@ -11,9 +11,16 @@ import Groq from "groq-sdk";
 
 const execFileAsync = promisify(execFile);
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
+let groq = null;
+
+function getGroqClient() {
+  if (!groq && process.env.GROQ_API_KEY) {
+    groq = new Groq({
+      apiKey: process.env.GROQ_API_KEY,
+    });
+  }
+  return groq;
+}
 
 /**
  * Extract frames from video for content analysis
@@ -64,7 +71,12 @@ async function analyzeFrame(framePath) {
     const base64Image = imageBuffer.toString('base64');
 
     // Use Groq's vision model for content analysis
-    const response = await groq.chat.completions.create({
+    const groqClient = getGroqClient();
+    if (!groqClient) {
+      throw new Error('Groq API key not configured');
+    }
+    
+    const response = await groqClient.chat.completions.create({
       model: "llama-3.2-90b-vision-preview",
       messages: [
         {

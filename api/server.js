@@ -28,7 +28,19 @@ import { recoverStuckJobs } from "./videoQueue.js";
 import { startScheduler } from "./scheduler.js";
 import { startDailyReset } from "./scheduler.js";
 
-dotenv.config();
+// Load environment variables from root .env file
+const __filename_temp = fileURLToPath(import.meta.url);
+const __dirname_temp = path.dirname(__filename_temp);
+const envPath = path.join(__dirname_temp, '../.env');
+console.log('[ENV] Loading .env from:', envPath);
+console.log('[ENV] File exists:', fs.existsSync(envPath));
+const result = dotenv.config({ path: envPath });
+if (result.error) {
+  console.error('[ENV] Error loading .env:', result.error);
+} else {
+  console.log('[ENV] Loaded successfully');
+  console.log('[ENV] JWT_SECRET exists:', !!process.env.JWT_SECRET);
+}
 
 // Initialize Redis client
 const redis = getRedisClient();
@@ -54,9 +66,9 @@ process.on("unhandledRejection", (reason, promise) => {
   process.exit(1);
 });
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const httpServer = createServer(app);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || process.env.API_PORT || 3001;
 const isProd = process.env.NODE_ENV === "production";
 
