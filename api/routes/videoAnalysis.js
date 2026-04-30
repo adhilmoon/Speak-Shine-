@@ -7,6 +7,7 @@ import { promisify } from "util";
 import { authMiddleware } from "../middleware/auth.js";
 import VideoReport from "../../models/videoReportSchema.js";
 import User from "../../models/userSchema.js";
+import Status from "../../models/statusSchema.js";
 import UploadAudit from "../../models/uploadAuditSchema.js";
 import { getVideoDuration } from "../../ai/webVideoProcessor.js";
 import { uploadToR2, deleteFromR2, getR2Key, getPresignedUploadUrl, getPresignedDownloadUrl } from "../../r2.js";
@@ -427,7 +428,23 @@ router.post("/upload", authMiddleware, (req, res, next) => {
       if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
       return res.status(400).json({ error: `Video is too short (${duration}s). Minimum is 1 minute.` });
     }
-    if (duration > 300) {
+    
+    // Dynamic duration limits based on question type
+    const status = await Status.findOne().lean();
+    const isMonthlyReflection = status?.isMonthlyReflectionDay || false;
+    const isMonthlyGoals = status?.isMonthlyGoalsDay || false;
+    const isWeeklyReflection = status?.isWeeklyReflectionDay || false;
+    
+    // Determine max duration with 5-second tolerance for timer drift
+    const maxDuration = (isMonthlyReflection || isMonthlyGoals) 
+      ? 605  // 10 minutes + 5 sec tolerance
+      : isWeeklyReflection 
+      ? 425  // 7 minutes + 5 sec tolerance
+      : 305; // 5 minutes + 5 sec tolerance
+    
+    const maxMinutes = Math.floor((maxDuration - 5) / 60); // Display minutes without tolerance
+    
+    if (duration > maxDuration) {
       securityFlags.push('duration_invalid');
       await UploadAudit.logUpload({
         userId, phone, uploadType: 'direct',
@@ -442,7 +459,7 @@ router.post("/upload", authMiddleware, (req, res, next) => {
       });
       
       if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
-      return res.status(400).json({ error: `Video is too long (${duration}s). Maximum is 5 minutes.` });
+      return res.status(400).json({ error: `Video is too long (${duration}s). Maximum is ${maxMinutes} minutes.` });
     }
 
     // ── SECURITY CHECK 2: Codec validation (OPTIONAL - skip if slow) ────────
