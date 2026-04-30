@@ -99,14 +99,11 @@ router.get("/me", authMiddleware, async (req, res) => {
   try {
     const phone = req.user.phone;
 
-    // Match by phone field first (most reliable), then fallback to userId regex
-    let user = await User.findOne({ phone: { $in: [phone, phone.replace(/^91/, "")] } }).lean();
-    if (!user) {
-      // fallback: try matching userId which may contain the phone
-      user = await User.findOne({
-        userId: { $regex: phone.replace(/^91/, "") }
-      }).lean();
-    }
+    // Match by phone field only (most reliable)
+    // Try with and without country code prefix
+    let user = await User.findOne({ 
+      phone: { $in: [phone, phone.replace(/^91/, ""), `91${phone}`] } 
+    }).lean();
 
     // If no WhatsApp user found, create a basic profile from auth data
     if (!user) {
