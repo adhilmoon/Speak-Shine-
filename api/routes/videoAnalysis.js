@@ -11,6 +11,12 @@ import { enqueue, enqueueRetry, registerSseClient, unregisterSseClient, estimate
 
 const router = express.Router();
 
+// ── Helper: Sanitize filename to prevent path traversal ─────────────────────
+function sanitizeFilename(filename) {
+  // Remove path separators and keep only safe characters
+  return path.basename(filename).replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
 // ── Helper: Download video from R2 and enqueue ──────────────────────────────
 // ffprobe cannot read from HTTPS URLs in Railway environment
 async function downloadAndEnqueue(reportId, videoUrl, phone, displayName) {
@@ -69,7 +75,8 @@ const upload = multer({
 router.get("/presign", authMiddleware, async (req, res) => {
   try {
     const { filename = "video.webm", mimeType = "video/webm" } = req.query;
-    const key = getR2Key(req.user.id, filename);
+    const safeFilename = sanitizeFilename(filename);
+    const key = getR2Key(req.user.id, safeFilename);
     const uploadUrl = await getPresignedUploadUrl(key, mimeType);
     const publicUrl = `${process.env.R2_PUBLIC_URL?.replace(/\/$/, "")}/${key}`;
     res.json({ uploadUrl, key, publicUrl });

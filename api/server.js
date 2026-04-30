@@ -259,10 +259,27 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-// Security headers
+// Security headers with HSTS
 app.use(helmet({
-  contentSecurityPolicy: false, // disabled — frontend uses inline styles/scripts
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // TODO: Remove unsafe-inline/eval gradually
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:", "blob:"],
+      connectSrc: ["'self'", process.env.R2_PUBLIC_URL || "https:", "wss:", "ws:"],
+      fontSrc: ["'self'", "data:"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'", "blob:", process.env.R2_PUBLIC_URL || "https:"],
+      frameSrc: ["'none'"],
+    },
+  },
   crossOriginEmbedderPolicy: false,
+  hsts: {
+    maxAge: 31536000, // 1 year
+    includeSubDomains: true,
+    preload: true,
+  },
 }));
 
 // CORS — restrict to known origins in production
@@ -331,6 +348,22 @@ app.use("/api/live-sessions", liveSessionRoutes);
 app.use("/api/monitoring",   monitoringRoutes);
 
 app.use("/api", (_, res) => res.status(404).json({ error: "API route not found" }));
+
+// ── Global Error Handler ─────────────────────────────────────────────────────
+app.use((err, req, res, next) => {
+  console.error('[Error]', err);
+  
+  // Don't expose stack traces in production
+  const errorResponse = {
+    error: isProd ? "Internal server error" : err.message,
+  };
+  
+  if (!isProd && err.stack) {
+    errorResponse.stack = err.stack;
+  }
+  
+  res.status(err.status || 500).json(errorResponse);
+});
 
 // ── Serve React in production ───────────────────────────────────────────────
 if (isProd) {

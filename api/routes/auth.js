@@ -19,6 +19,13 @@ if (!JWT_SECRET) {
 const TWO_FACTOR_KEY = process.env.TWO_FACTOR_API_KEY || null;
 const OTP_TTL = 300; // 5 minutes
 
+// ── Security Event Logging ───────────────────────────────────────────────────
+function logSecurityEvent(event, details) {
+  const timestamp = new Date().toISOString();
+  console.warn(`[SECURITY] ${timestamp} ${event}:`, JSON.stringify(details));
+  // TODO: Send to monitoring service (e.g., Sentry, LogRocket, Datadog)
+}
+
 // ── Rate limiters ─────────────────────────────────────────────────────────────
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -151,11 +158,14 @@ router.post("/login", loginLimiter, async (req, res) => {
       // Increment failed attempts
       auth.failedLoginAttempts = (auth.failedLoginAttempts || 0) + 1;
       
+      // Log failed login attempt
+      logSecurityEvent('FAILED_LOGIN', { phone, attempts: auth.failedLoginAttempts, ip: req.ip });
+      
       // Lock account after 5 failed attempts for 30 minutes
       if (auth.failedLoginAttempts >= 5) {
         auth.lockUntil = new Date(Date.now() + 30 * 60 * 1000);
         await auth.save();
-        console.warn(`[Security] Account locked for ${phone} after ${auth.failedLoginAttempts} failed attempts`);
+        logSecurityEvent('ACCOUNT_LOCKED', { phone, reason: 'too_many_failed_attempts', ip: req.ip });
         return res.status(423).json({ 
           error: "Too many failed login attempts. Account locked for 30 minutes." 
         });
@@ -201,6 +211,13 @@ router.post("/forgot/send-otp", otpLimiter, async (req, res) => {
     if (!auth.isActive) return res.status(403).json({ error: "This account has been disabled. Contact your admin." });
 
     const otp = generateOTP();
+    
+    // Set OTP expiration (5 minutes) and reset attempt counter
+    auth.otp = otp;
+    auth.otpExpiry = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+    auth.otpAttempts = 0;
+    await auth.save();
+    
     await storeOTP(stripped, otp, "forgot");
     await sendSmsOTP(stripped, otp);
 
@@ -222,8 +239,36 @@ router.post("/forgot/verify-otp", otpLimiter, async (req, res) => {
     const stored = await getStoredOTP(stripped, "forgot");
 
     if (!stored) return res.status(400).json({ error: "OTP expired or not found. Request a new one." });
-    if (stored !== String(otp).trim()) return res.status(400).json({ error: "Incorrect OTP" });
+    
+    // Get auth record to check expiry and attempts
+    const auth = await Auth.findOne({ phone: { $in: [stripped, `91${stripped}`, phone] } });
+    if (!auth) return res.status(404).json({ error: "Account not found" });
+    
+    // Check OTP expiration
+    if (!auth.otpExpiry || auth.otpExpiry < Date.now()) {
+      await deleteOTP(stripped, "forgot");
+      return res.status(400).json({ error: "OTP has expired. Request a new one." });
+    }
+    
+    // Check attempt limit
+    if (auth.otpAttempts >= 3) {
+      await deleteOTP(stripped, "forgot");
+      return res.status(429).json({ error: "Too many incorrect attempts. Request a new OTP." });
+    }
+    
+    if (stored !== String(otp).trim()) {
+      // Increment failed attempts
+      auth.otpAttempts = (auth.otpAttempts || 0) + 1;
+      await auth.save();
+      return res.status(400).json({ error: "Incorrect OTP" });
+    }
 
+    // Clear OTP data on success
+    auth.otp = null;
+    auth.otpExpiry = null;
+    auth.otpAttempts = 0;
+    await auth.save();
+    
     await deleteOTP(stripped, "forgot");
 
     // Issue a short-lived reset token
