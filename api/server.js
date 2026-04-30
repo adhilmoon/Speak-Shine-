@@ -358,7 +358,12 @@ const videoUploadLimiter = rateLimit({
   message: { error: "Too many video uploads. Please try again later." },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.user?.id || req.ip, // Rate limit by user ID if authenticated
+  keyGenerator: (req) => {
+    // Use user ID if authenticated, otherwise fall back to default IP handling
+    if (req.user?.id) return `user:${req.user.id}`;
+    // Let express-rate-limit handle IP (including IPv6) automatically
+    return undefined;
+  },
   skip: (req) => !req.path.includes('/upload') && !req.path.includes('/confirm'), // Only apply to upload endpoints
 });
 

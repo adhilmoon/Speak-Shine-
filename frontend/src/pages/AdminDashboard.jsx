@@ -49,10 +49,29 @@ export default function AdminDashboard() {
   const load = async () => {
     setLoading(true);
     try {
-      const [d,u,q,w,m,s] = await Promise.all([api.get("/dashboard"),api.get("/users"),api.get("/questions?limit=200"),api.get("/dashboard/report/weekly"),api.get("/dashboard/report/monthly"),api.get("/dashboard/settings")]);
-      setDash(d.data); setUsers(u.data); setQuestions(q.data.questions); setWeekly(w.data); setMonthly(m.data);
-      setSettings({ posterSendTime: s.data.posterSendTime || "08:00", questionGenerateTime: s.data.questionGenerateTime || "07:00" });
-    } finally { setLoading(false); }
+      const [d,u,q,w,m,s] = await Promise.all([
+        api.get("/dashboard"),
+        api.get("/users"),
+        api.get("/questions?limit=200"),
+        api.get("/dashboard/report/weekly"),
+        api.get("/dashboard/report/monthly"),
+        api.get("/dashboard/settings")
+      ]);
+      setDash(d.data); 
+      setUsers(u.data); 
+      setQuestions(q.data.questions); 
+      setWeekly(w.data); 
+      setMonthly(m.data);
+      setSettings({ 
+        posterSendTime: s.data.posterSendTime || "08:00", 
+        questionGenerateTime: s.data.questionGenerateTime || "07:00" 
+      });
+    } catch (err) {
+      console.error("Failed to load dashboard data:", err);
+      msg(err?.response?.data?.error || "Failed to load dashboard data", "danger");
+    } finally { 
+      setLoading(false); 
+    }
   };
   useEffect(()=>{load();},[]);
 
