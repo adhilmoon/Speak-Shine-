@@ -255,13 +255,25 @@ app.use(helmet({
 // CORS — restrict to known origins in production
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",").map(o => o.trim())
-  : ["*"];
+  : [];
 app.use(cors({
   origin: isProd
     ? (origin, cb) => {
-        if (!origin || allowedOrigins.includes("*") || allowedOrigins.includes(origin)) {
+        // Allow requests with no origin (like mobile apps, Postman, server-to-server)
+        if (!origin) {
+          cb(null, true);
+          return;
+        }
+        // If no origins configured, allow all (fallback for misconfiguration)
+        if (allowedOrigins.length === 0 || allowedOrigins.includes("*")) {
+          cb(null, true);
+          return;
+        }
+        // Check if origin is in allowed list
+        if (allowedOrigins.includes(origin)) {
           cb(null, true);
         } else {
+          console.error(`[CORS] Blocked origin: ${origin}. Allowed: ${allowedOrigins.join(", ")}`);
           cb(new Error("Not allowed by CORS"));
         }
       }
