@@ -3,7 +3,7 @@
  * Exports uploadToR2, deleteFromR2, getR2Key, getPresignedUploadUrl
  */
 
-import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -91,4 +91,21 @@ export async function getPresignedUploadUrl(key, mimeType = "video/webm") {
     ContentType: mimeType,
   });
   return getSignedUrl(r2, command, { expiresIn: 900 }); // 15 min
+}
+
+/**
+ * Generate a presigned GET URL so the browser can download from R2 with authentication.
+ * Used for private videos to prevent unauthorized access.
+ * The URL expires after the specified time.
+ *
+ * @param {string} key        — R2 object key
+ * @param {number} expiresIn  — expiration time in seconds (default: 1 hour)
+ * @returns {Promise<string>} — presigned GET URL
+ */
+export async function getPresignedDownloadUrl(key, expiresIn = 3600) {
+  const command = new GetObjectCommand({
+    Bucket: BUCKET,
+    Key: key,
+  });
+  return getSignedUrl(r2, command, { expiresIn });
 }

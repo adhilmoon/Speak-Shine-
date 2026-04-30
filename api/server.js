@@ -325,6 +325,17 @@ const apiLimiter = rateLimit({
 });
 app.use("/api", apiLimiter);
 
+// Video upload rate limit: 5 uploads per hour per user (prevents storage abuse)
+const videoUploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5, // 5 uploads per hour
+  message: { error: "Too many video uploads. Please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id || req.ip, // Rate limit by user ID if authenticated
+  skip: (req) => !req.path.includes('/upload') && !req.path.includes('/confirm'), // Only apply to upload endpoints
+});
+
 // ── Response time middleware ─────────────────────────────────────────────────
 app.use((req, res, next) => {
   const start = Date.now();
@@ -338,7 +349,7 @@ app.use("/api/auth",         authRoutes);
 app.use("/api/users",        userRoutes);
 app.use("/api/dashboard",    dashboardRoutes);
 app.use("/api/questions",    questionRoutes);
-app.use("/api/video",        videoAnalysisRoutes);
+app.use("/api/video",        videoUploadLimiter, videoAnalysisRoutes); // Apply video rate limiter
 app.use("/api/attendance",   attendanceRoutes);
 app.use("/api/submissions",  submissionRoutes);
 app.use("/api/chat",         chatRoutes);

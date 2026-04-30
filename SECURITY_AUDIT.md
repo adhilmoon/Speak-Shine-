@@ -163,3 +163,186 @@
 For security issues, please contact: [sidhartht900@gmail.com]
 
 **Do not** open public GitHub issues for security vulnerabilities.
+
+
+---
+
+## 🎥 Video Upload & Recording Security
+
+### Overview
+The application allows users to upload videos for AI-powered speech analysis. Videos can be uploaded via:
+1. **Direct browser upload** to Railway server (multer)
+2. **Presigned URL upload** directly to Cloudflare R2 (bypasses server)
+
+### Security Assessment
+
+#### ✅ Strengths
+
+1. **File Size Limits**
+   - Hard limit: 110MB (prevents DoS via large files)
+   - Enforced at multiple layers: multer, HEAD request check
+   - Appropriate error messages guide users
+
+2. **Duration Validation**
+   - Minimum: 60 seconds
+   - Maximum: 300 seconds (5 minutes)
+   - Prevents processing of invalid/test videos
+
+3. **Filename Sanitization**
+   - `sanitizeFilename()` function removes path separators
+   - Uses `path.basename()` to prevent directory traversal
+   - Replaces unsafe characters with underscores
+
+4. **Authentication Required**
+   - All video endpoints require JWT authentication
+   - User ownership verified before accessing reports
+   - Access control on report visibility (public/private)
+
+5. **Temporary File Cleanup**
+   - Local temp files deleted after processing
+   - Cleanup in finally blocks ensures execution
+   - Failed uploads cleaned from R2
+
+6. **R2 Presigned URLs**
+   - 15-minute expiration (short-lived)
+   - Scoped to specific object key
+   - Content-Type enforced
+
+7. **Processing Queue**
+   - 10-minute hard timeout per job
+   - Prevents stuck jobs from blocking queue
+   - Automatic recovery of stuck jobs on restart
+   - Max 3 retry attempts before permanent failure
+
+#### ⚠️ Vulnerabilities & Risks
+
+##### 🔴 CRITICAL
+
+1. ✅ **MIME Type Validation Missing** - FIXED
+   - **Risk**: Users can upload non-video files (executables, scripts, malware)
+   - **Impact**: Potential XSS if served with wrong Content-Type, malware distribution
+   - **Location**: `api/routes/videoAnalysis.js` - `/upload` and `/confirm` endpoints
+   - **Status**: ✅ Implemented - MIME type whitelist validation added
+   - **Implementation**: Validates against `ALLOWED_VIDEO_TYPES` array before accepting uploads
+
+2. ✅ **FFmpeg Command Injection Risk** - FIXED
+   - **Risk**: Malicious filenames could inject commands into ffmpeg/ffprobe
+   - **Impact**: Remote code execution on server
+   - **Location**: `ai/webVideoProcessor.js` - `getVideoDuration()`, `transcodeWebmToMp4()`
+   - **Status**: ✅ Implemented - Replaced `exec()` with `execFile()` for array-based command execution
+   - **Implementation**: All ffmpeg/ffprobe calls now use `execFile()` with argument arrays
+
+##### 🟡 HIGH PRIORITY
+
+3. ✅ **No Magic Byte Validation** - FIXED
+   - **Risk**: MIME type spoofing - user uploads malware.exe renamed to video.mp4
+   - **Impact**: Malicious files stored and potentially served to other users
+   - **Status**: ✅ Implemented - Magic byte validation using `file-type` package
+   - **Implementation**: Validates file signature matches video format before processing
+
+4. ✅ **R2 Public URL Exposure** - FIXED
+   - **Risk**: Anyone with the R2 URL can access videos (even "private" ones)
+   - **Impact**: Privacy breach - private videos accessible without authentication
+   - **Status**: ✅ Implemented - Presigned GET URLs for private videos
+   - **Implementation**: Private videos now use 1-hour signed URLs instead of public CDN links
+
+5. ✅ **No Rate Limiting on Video Uploads** - FIXED
+   - **Risk**: User can spam uploads, fill storage, cause DoS
+   - **Impact**: Storage costs, server overload, legitimate users blocked
+   - **Status**: ✅ Implemented - 5 uploads per hour per user
+   - **Implementation**: Dedicated rate limiter for video upload endpoints
+
+6. **No User Storage Quota** - DEFERRED
+   - **Risk**: Single user can upload unlimited videos
+   - **Impact**: Storage costs, potential abuse
+   - **Status**: ⏳ Deferred - Videos auto-expire after 7 days (natural quota)
+   - **Note**: Current TTL-based cleanup provides sufficient protection
+
+##### 🔵 MEDIUM PRIORITY
+
+7. **Video Content Validation Missing**
+   - **Risk**: Malicious video codecs could exploit ffmpeg vulnerabilities
+   - **Impact**: Potential RCE via ffmpeg exploit
+   - **Mitigation**: Keep ffmpeg updated, run in isolated environment
+   - **Enhancement**: Validate codec types before processing
+
+8. **No Virus Scanning**
+   - **Risk**: Uploaded files not scanned for malware
+   - **Impact**: Platform could distribute malware
+   - **Recommendation**: Integrate ClamAV or cloud antivirus API
+
+9. **Presigned URL Reuse**
+   - **Risk**: Presigned upload URLs can be reused within 15-minute window
+   - **Impact**: User could upload multiple files to same key
+   - **Mitigation**: Current - key includes timestamp, low risk
+   - **Enhancement**: One-time use tokens
+
+10. **No Content Moderation**
+    - **Risk**: Users can upload inappropriate/illegal content
+    - **Impact**: Legal liability, platform abuse
+    - **Recommendation**: Implement content moderation (manual or AI-based)
+
+##### 🟢 LOW PRIORITY
+
+11. **Verbose Error Messages**
+    - **Risk**: ffmpeg/ffprobe errors expose system details
+    - **Impact**: Information disclosure aids attackers
+    - **Fix**: Sanitize error messages in production
+
+12. **No Upload Audit Trail**
+    - **Risk**: Cannot track who uploaded what and when
+    - **Impact**: Difficult to investigate abuse
+    - **Enhancement**: Log all upload events with IP, user, timestamp
+
+### Implementation Summary
+
+All critical and high-priority video security vulnerabilities have been fixed:
+
+1. ✅ **MIME Type Validation**: Whitelist of allowed video types enforced
+2. ✅ **FFmpeg Command Injection Prevention**: Replaced `exec()` with `execFile()`
+3. ✅ **Magic Byte Validation**: File signature validation using `file-type` package
+4. ✅ **Private Video URL Security**: Presigned GET URLs for private videos (1-hour expiration)
+5. ✅ **Video Upload Rate Limiting**: 5 uploads per hour per user
+
+**Dependencies Added:**
+- `file-type` - For magic byte validation
+
+**Files Modified:**
+- `api/routes/videoAnalysis.js` - MIME validation, magic byte check, private URL generation
+- `ai/webVideoProcessor.js` - FFmpeg command injection prevention
+- `r2.js` - Added `getPresignedDownloadUrl()` function
+- `api/server.js` - Video upload rate limiter
+
+### Video Security Checklist
+
+- [x] File size limits enforced
+- [x] Duration validation
+- [x] Filename sanitization
+- [x] Authentication required
+- [x] Temporary file cleanup
+- [x] Presigned URL expiration
+- [x] Processing timeouts
+- [x] MIME type validation
+- [x] Magic byte validation
+- [x] FFmpeg command injection prevention
+- [x] Private video URL security
+- [x] Video upload rate limiting
+- [ ] User storage quota (deferred - TTL-based cleanup sufficient)
+- [ ] Video content validation (codec validation)
+- [ ] Virus scanning
+- [ ] Content moderation
+
+### Video Security Score: 12/16 (75%)
+
+**Status**: Good security posture - Critical vulnerabilities fixed, optional enhancements remain
+
+### Priority Action Items for Video Security
+
+1. ✅ **CRITICAL**: Implement MIME type validation - COMPLETED
+2. ✅ **CRITICAL**: Replace exec() with execFile() for FFmpeg - COMPLETED
+3. ✅ **HIGH**: Add magic byte validation - COMPLETED
+4. ✅ **HIGH**: Implement private video URL security - COMPLETED
+5. ✅ **HIGH**: Add video upload rate limiting - COMPLETED
+6. ⏳ **OPTIONAL**: Implement user storage quota (deferred)
+7. ⏳ **OPTIONAL**: Add virus scanning (future enhancement)
+8. ⏳ **OPTIONAL**: Implement content moderation (future enhancement)

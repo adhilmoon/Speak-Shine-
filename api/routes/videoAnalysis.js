@@ -2,14 +2,29 @@ import express from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { authMiddleware } from "../middleware/auth.js";
 import VideoReport from "../../models/videoReportSchema.js";
 import User from "../../models/userSchema.js";
 import { getVideoDuration } from "../../ai/webVideoProcessor.js";
-import { uploadToR2, deleteFromR2, getR2Key, getPresignedUploadUrl } from "../../r2.js";
+import { uploadToR2, deleteFromR2, getR2Key, getPresignedUploadUrl, getPresignedDownloadUrl } from "../../r2.js";
 import { enqueue, enqueueRetry, registerSseClient, unregisterSseClient, estimateWait } from "../videoQueue.js";
+import { fileTypeFromFile } from "file-type";
 
 const router = express.Router();
+const execFileAsync = promisify(execFile);
+
+// ── Security: Allowed video MIME types ──────────────────────────────────────
+const ALLOWED_VIDEO_TYPES = [
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
+  'video/x-msvideo',
+  'video/mpeg',
+  'video/x-matroska',
+  'video/x-ms-wmv'
+];
 
 // ── Helper: Sanitize filename to prevent path traversal ─────────────────────
 function sanitizeFilename(filename) {
@@ -75,6 +90,12 @@ const upload = multer({
 router.get("/presign", authMiddleware, async (req, res) => {
   try {
     const { filename = "video.webm", mimeType = "video/webm" } = req.query;
+    
+    // Validate MIME type
+    if (!ALLOWED_VIDEO_TYPES.includes(mimeType)) {
+      return res.status(400).json({ error: "Invalid file type. Only video files are allowed." });
+    }
+    
     const safeFilename = sanitizeFilename(filename);
     const key = getR2Key(req.user.id, safeFilename);
     const uploadUrl = await getPresignedUploadUrl(key, mimeType);
@@ -92,6 +113,12 @@ router.get("/presign", authMiddleware, async (req, res) => {
 router.post("/confirm", authMiddleware, async (req, res) => {
   const { key, publicUrl, mimeType = "video/webm", isPublic = true } = req.body;
   if (!key || !publicUrl) return res.status(400).json({ error: "key and publicUrl are required" });
+
+  // Validate MIME type
+  if (!ALLOWED_VIDEO_TYPES.includes(mimeType)) {
+    try { await deleteFromR2(key); } catch {}
+    return res.status(400).json({ error: "Invalid file type. Only video files are allowed." });
+  }
 
   const userId = req.user.id;
   const phone  = req.user.phone;
@@ -172,10 +199,6 @@ router.post("/confirm", authMiddleware, async (req, res) => {
 
 // ── Transcode WebM → MP4 for proper seeking support ─────────────────────────
 async function transcodeWebmToMp4(reportId, webmKey, webmUrl, userId) {
-  const { exec } = await import("child_process");
-  const { promisify } = await import("util");
-  const execAsync = promisify(exec);
-
   const tmpWebm = `./tmp/uploads/transcode-${reportId}.webm`;
   const tmpMp4  = `./tmp/uploads/transcode-${reportId}.mp4`;
 
@@ -188,11 +211,16 @@ async function transcodeWebmToMp4(reportId, webmKey, webmUrl, userId) {
     fs.writeFileSync(tmpWebm, Buffer.from(buf));
 
     // Transcode to MP4 with fast-start (moov atom at front = seekable)
+    // Using execFileAsync for security (prevents command injection)
     console.log(`[Transcode] Converting to MP4…`);
-    await execAsync(
-      `ffmpeg -i "${tmpWebm}" -c:v copy -c:a aac -movflags +faststart "${tmpMp4}" -y`,
-      { timeout: 120000 }
-    );
+    await execFileAsync('ffmpeg', [
+      '-i', tmpWebm,
+      '-c:v', 'copy',
+      '-c:a', 'aac',
+      '-movflags', '+faststart',
+      tmpMp4,
+      '-y'
+    ], { timeout: 120000 });
 
     // Upload MP4 to R2
     const mp4Key = webmKey.replace(/\.webm$/, ".mp4");
@@ -270,6 +298,12 @@ router.post("/upload", authMiddleware, (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No video file uploaded" });
 
+    // Validate MIME type
+    if (!ALLOWED_VIDEO_TYPES.includes(req.file.mimetype)) {
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return res.status(400).json({ error: "Invalid file type. Only video files are allowed." });
+    }
+
     videoPath = req.file.path;
     const userId = req.user.id;
     const phone  = req.user.phone;
@@ -281,6 +315,21 @@ router.post("/upload", authMiddleware, (req, res, next) => {
 
     // Ensure upload dir exists
     fs.mkdirSync(path.dirname(videoPath), { recursive: true });
+
+    // Validate file magic bytes (prevents MIME type spoofing)
+    try {
+      const fileType = await fileTypeFromFile(videoPath);
+      if (!fileType || !fileType.mime.startsWith('video/')) {
+        if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
+        return res.status(400).json({ 
+          error: "Invalid video file. File content does not match video format." 
+        });
+      }
+    } catch (magicErr) {
+      console.error("[VideoUpload] Magic byte validation failed:", magicErr);
+      if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
+      return res.status(400).json({ error: "Could not validate video file." });
+    }
 
     // Check duration
     let duration;
@@ -384,6 +433,17 @@ router.get("/report/:reportId", authMiddleware, async (req, res) => {
     if (!report) return res.status(404).json({ error: "Report not found or expired" });
     if (report.userId.toString() !== req.user.id) return res.status(403).json({ error: "Access denied" });
 
+    // For private videos, generate short-lived signed URL
+    let videoUrl = report.videoUrl;
+    if (!report.isPublic && report.videoKey) {
+      try {
+        videoUrl = await getPresignedDownloadUrl(report.videoKey, 3600); // 1 hour
+      } catch (err) {
+        console.error("[Report] Failed to generate signed URL:", err);
+        // Fall back to public URL if signing fails
+      }
+    }
+
     res.json({
       reportId:      report._id,
       status:        report.status,
@@ -391,7 +451,7 @@ router.get("/report/:reportId", authMiddleware, async (req, res) => {
       expiresAt:     report.expiresAt,
       videoFileName: report.videoFileName,
       videoDuration: report.videoDuration,
-      videoUrl:      report.videoUrl || null,
+      videoUrl:      videoUrl || null,
       isPublic:      report.isPublic || false,
       analysis:      report.status === "completed" ? report.analysis : null,
       errorMessage:  report.errorMessage,

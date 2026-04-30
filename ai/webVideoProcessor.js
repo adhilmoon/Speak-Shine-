@@ -4,7 +4,8 @@
  */
 
 import fs from "fs";
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
+import { promisify } from "util";
 import { extractAudio } from "./extractAudio.js";
 import { transcribe } from "./transcribe.js";
 import { analyzeSpeech } from "./analyzeSpeech.js";
@@ -17,6 +18,9 @@ import {
   SPEECH_TIMEOUT_MS,
   VISUAL_TIMEOUT_MS,
 } from "./pipeline.js";
+
+const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 /**
  * Process a locally uploaded video file through the AI pipeline.
@@ -193,63 +197,66 @@ function buildStructuredAnalysis(speechResult, visual, qualityWarning) {
 
 /**
  * Get video duration using ffprobe JSON output — works without file extension.
+ * Uses execFile for security (prevents command injection).
  */
 export function getVideoDuration(videoPath, isUrl = false) {
   return new Promise((resolve, reject) => {
-    // For URLs, also use -count_packets to handle WebM without duration header
-    const args = isUrl
-      ? `ffprobe -v quiet -print_format json -show_format -show_streams -count_packets "${videoPath}"`
-      : `ffprobe -v quiet -print_format json -show_format -show_streams -count_packets "${videoPath}"`;
-    exec(
-      args,
-      { timeout: 30000 },
-      (err, stdout, stderr) => {
-        if (err || !stdout?.trim()) {
-          console.error("[ffprobe] failed:", stderr || err?.message);
-          return reject(new Error("Could not read video duration. Please ensure the file is a valid video."));
-        }
-        try {
-          const info = JSON.parse(stdout);
-          // [ffprobe] Raw metadata removed — too verbose for production
+    // Build args array for ffprobe
+    const args = [
+      '-v', 'quiet',
+      '-print_format', 'json',
+      '-show_format',
+      '-show_streams',
+      '-count_packets',
+      videoPath
+    ];
 
-          // Try format duration first
-          let dur = parseFloat(info?.format?.duration);
-
-          // Fallback: calculate from nb_read_packets * avg frame duration
-          if (!dur || dur <= 0) {
-            const videoStream = info?.streams?.find(s => s.codec_type === "video");
-            dur = parseFloat(videoStream?.duration) || 0;
-
-            // Last resort: use nb_read_packets and r_frame_rate
-            if ((!dur || dur <= 0) && videoStream?.nb_read_packets && videoStream?.r_frame_rate) {
-              const [num, den] = videoStream.r_frame_rate.split("/").map(Number);
-              const fps = den ? num / den : 0;
-              console.log("[ffprobe] Calculating from packets:", videoStream.nb_read_packets, "fps:", fps);
-              if (fps > 0) dur = parseInt(videoStream.nb_read_packets) / fps;
-            }
-          }
-
-          console.log("[ffprobe] Final duration:", dur);
-          
-          // Emergency fallback: estimate from file size (only for local files)
-          if (!dur || dur <= 0) {
-            if (!isUrl) {
-              const fileSize = fs.statSync(videoPath).size;
-              const estimatedDur = Math.round(fileSize / (1024 * 1024) * 10);
-              if (estimatedDur > 0) { dur = estimatedDur; }
-            }
-            if (!dur || dur <= 0) {
-              return reject(new Error("Could not determine video duration."));
-            }
-          }
-          
-          resolve(Math.round(dur));
-        } catch (parseErr) {
-          console.error("[ffprobe] Parse error:", parseErr);
-          reject(new Error("Could not read video metadata."));
-        }
+    execFile('ffprobe', args, { timeout: 30000 }, (err, stdout, stderr) => {
+      if (err || !stdout?.trim()) {
+        console.error("[ffprobe] failed:", stderr || err?.message);
+        return reject(new Error("Could not read video duration. Please ensure the file is a valid video."));
       }
-    );
+      try {
+        const info = JSON.parse(stdout);
+        // [ffprobe] Raw metadata removed — too verbose for production
+
+        // Try format duration first
+        let dur = parseFloat(info?.format?.duration);
+
+        // Fallback: calculate from nb_read_packets * avg frame duration
+        if (!dur || dur <= 0) {
+          const videoStream = info?.streams?.find(s => s.codec_type === "video");
+          dur = parseFloat(videoStream?.duration) || 0;
+
+          // Last resort: use nb_read_packets and r_frame_rate
+          if ((!dur || dur <= 0) && videoStream?.nb_read_packets && videoStream?.r_frame_rate) {
+            const [num, den] = videoStream.r_frame_rate.split("/").map(Number);
+            const fps = den ? num / den : 0;
+            console.log("[ffprobe] Calculating from packets:", videoStream.nb_read_packets, "fps:", fps);
+            if (fps > 0) dur = parseInt(videoStream.nb_read_packets) / fps;
+          }
+        }
+
+        console.log("[ffprobe] Final duration:", dur);
+        
+        // Emergency fallback: estimate from file size (only for local files)
+        if (!dur || dur <= 0) {
+          if (!isUrl) {
+            const fileSize = fs.statSync(videoPath).size;
+            const estimatedDur = Math.round(fileSize / (1024 * 1024) * 10);
+            if (estimatedDur > 0) { dur = estimatedDur; }
+          }
+          if (!dur || dur <= 0) {
+            return reject(new Error("Could not determine video duration."));
+          }
+        }
+        
+        resolve(Math.round(dur));
+      } catch (parseErr) {
+        console.error("[ffprobe] Parse error:", parseErr);
+        reject(new Error("Could not read video metadata."));
+      }
+    });
   });
 }
 
