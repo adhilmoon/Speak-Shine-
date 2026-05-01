@@ -1375,7 +1375,7 @@ function MonitoringPanel() {
       {/* Row 2: 3 stat tiles */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"0.75rem"}}>
         <MonStat icon="🎬" label="Processing Now" value={isIdle ? "Idle" : `${videos.processing} active`} accent="#38bdf8" />
-        <MonStat icon="⏱️" label="Avg Process Time" value={queue.avgProcessingMin ? `${queue.avgProcessingMin} min` : "—"} accent="#fbbf24" />
+        <MonStat icon="⏱️" label="Avg Process Time" value={queue?.avgProcessingMin ? `${queue.avgProcessingMin} min` : "—"} accent="#fbbf24" />
         <MonStat icon="🌐" label="Avg API Response" value={apiStats.avgResponseMs ? `${apiStats.avgResponseMs}ms` : "—"} accent="#fb923c" />
       </div>
 
@@ -1411,12 +1411,12 @@ function MonitoringPanel() {
             <div style={{display:"grid",gap:"0.6rem",fontSize:"0.88rem"}}>
               <QueueRow label="Processing" value={videos.activeJobId ? `#${String(videos.activeJobId).slice(-6)}` : "—"} valueColor="#fbbf24" />
               <QueueRow label="Waiting" value={`${videos.queued} video${videos.queued !== 1 ? "s" : ""}`} />
-              <QueueRow label="Est. wait" value={queue.avgProcessingMin ? `~${queue.avgProcessingMin} min` : "~2.5 min"} />
+              <QueueRow label="Est. wait" value={queue?.avgProcessingMin ? `~${queue.avgProcessingMin} min` : "~2.5 min"} />
             </div>
           )}
           <div style={{marginTop:"1rem",paddingTop:"0.75rem",borderTop:"1px solid var(--border)",display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.5rem",fontSize:"0.82rem",color:"var(--muted)"}}>
-            <span>Total processed: <strong style={{color:"var(--text)"}}>{queue.totalProcessed}</strong></span>
-            <span>Total failed: <strong style={{color: queue.totalFailed > 0 ? "#f87171" : "var(--text)"}}>{queue.totalFailed}</strong></span>
+            <span>Total processed: <strong style={{color:"var(--text)"}}>{queue?.totalProcessed || 0}</strong></span>
+            <span>Total failed: <strong style={{color: (queue?.totalFailed || 0) > 0 ? "#f87171" : "var(--text)"}}>{queue?.totalFailed || 0}</strong></span>
           </div>
         </div>
 
@@ -1424,19 +1424,19 @@ function MonitoringPanel() {
         <div className="card">
           <div style={{fontWeight:600,fontSize:"0.95rem",marginBottom:"1rem"}}>
             ⚠️ Errors Today
-            {queue.errorsToday > 0 && (
+            {(queue?.errorsToday || 0) > 0 && (
               <span style={{marginLeft:"0.5rem",background:"rgba(248,113,113,0.15)",color:"#f87171",borderRadius:99,padding:"0.1rem 0.5rem",fontSize:"0.75rem"}}>
                 {queue.errorsToday}
               </span>
             )}
           </div>
-          {!queue.recentErrors || queue.recentErrors.length === 0 ? (
+          {!queue?.recentErrors || queue.recentErrors.length === 0 ? (
             <div style={{display:"flex",alignItems:"center",gap:"0.5rem",color:"#4ade80",fontWeight:500,fontSize:"0.9rem"}}>
               <span style={{fontSize:"1.1rem"}}>✅</span> No errors today
             </div>
           ) : (
             <div style={{display:"grid",gap:"0.5rem",maxHeight:160,overflowY:"auto"}}>
-              {queue.recentErrors.map((e, i) => (
+              {(queue?.recentErrors || []).map((e, i) => (
                 <div key={i} style={{background:"rgba(248,113,113,0.07)",border:"1px solid rgba(248,113,113,0.18)",borderRadius:8,padding:"0.5rem 0.75rem"}}>
                   <div style={{color:"#f87171",fontWeight:600,fontSize:"0.78rem",marginBottom:"0.2rem"}}>
                     {String(e.reportId).slice(-8)} · {new Date(e.at).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}

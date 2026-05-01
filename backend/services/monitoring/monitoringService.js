@@ -81,10 +81,6 @@ export async function getVideoStats() {
     completedToday,
     failedToday,
     activeJobId: queue.activeJobId,
-    queue: {
-      ...queue,
-      avgProcessingMin: queue.avgProcessingMin,
-    },
   };
 }
 
@@ -112,12 +108,20 @@ export async function getMonitoringData() {
   ]);
 
   const api = getApiStats();
+  const queue = getQueueStats();
 
   return {
     timestamp: new Date().toISOString(),
     activeUsers: _onlineUsers ? _onlineUsers.size : 0,
     system,
-    videos,
+    videos: {
+      processing: videos.processing,
+      queued: videos.queued,
+      completedToday: videos.completedToday,
+      failedToday: videos.failedToday,
+      activeJobId: videos.activeJobId,
+    },
+    queue, // Top-level queue object for frontend compatibility
     api,
   };
 }
