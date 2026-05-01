@@ -353,12 +353,7 @@ export default function VideoAnalysis() {
           <button
             className={`tab-btn${mode === "upload" ? " active" : ""}`}
             onClick={() => setMode("upload")}
-            style={{ 
-              background: mode === "upload" ? "var(--primary)" : "rgba(14,165,233,0.15)",
-              border: mode === "upload" ? "1px solid var(--primary)" : "1px solid rgba(56,189,248,0.3)",
-              color: mode === "upload" ? "#fff" : "#38bdf8"
-            }}
-          >📁 Upload Video (Recommended)</button>
+          >📁 Upload Video</button>
           <button
             className={`tab-btn${mode === "record" ? " active" : ""}`}
             onClick={() => setMode("record")}
@@ -756,54 +751,60 @@ function RecordCard({ onAnalysisStarted, question, isMonthlyReflection, isMonthl
   const startRecording = (stream) => {
     chunksRef.current = [];
 
-    // More conservative codec selection for better compatibility
-    let mimeType;
-    let recorderOptions = {};
-    
-    // Try codecs in order of compatibility (most compatible first)
-    if (MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")) {
-      mimeType = "video/webm;codecs=vp8,opus";
-      recorderOptions = {
-        mimeType,
-        videoBitsPerSecond: 800_000,  // Lower bitrate for stability
-        audioBitsPerSecond: 64_000,   // Lower audio bitrate
-      };
-    } else if (MediaRecorder.isTypeSupported("video/webm")) {
-      mimeType = "video/webm";
-      recorderOptions = {
-        mimeType,
-        videoBitsPerSecond: 600_000,  // Even lower for basic webm
-        audioBitsPerSecond: 64_000,
-      };
-    } else if (MediaRecorder.isTypeSupported("video/mp4")) {
-      mimeType = "video/mp4";
-      recorderOptions = { mimeType };  // Let browser decide bitrates for MP4
-    } else {
-      // Fallback: no specific codec, let browser choose
-      mimeType = "";
-      recorderOptions = {};
+    // Use the most basic MediaRecorder configuration possible for maximum compatibility
+    let recorder;
+    try {
+      // Try the most basic configuration first - no codec specification
+      recorder = new MediaRecorder(stream);
+      console.log(`[Recording] Using basic MediaRecorder (no codec specified)`);
+    } catch (err) {
+      console.error(`[Recording] Basic MediaRecorder failed:`, err);
+      setError("Your browser doesn't support video recording. Please use a different browser.");
+      setStep("setup");
+      cleanup();
+      return;
     }
 
-    console.log(`[Recording] Using MIME type: ${mimeType || 'browser default'}`);
-    mimeTypeRef.current = mimeType || "video/webm"; // Store for later use
+    // Store the actual MIME type the browser chose
+    mimeTypeRef.current = recorder.mimeType || "video/webm";
+    console.log(`[Recording] Browser selected MIME type: ${mimeTypeRef.current}`);
 
-    const recorder = new MediaRecorder(stream, recorderOptions);
     recorderRef.current = recorder;
     
-    // Enhanced error handling and chunk validation
+    // Track recording health
+    let lastChunkTime = Date.now();
+    let totalDataReceived = 0;
     let chunkCount = 0;
+    
     recorder.ondataavailable = (e) => { 
       chunkCount++;
+      const now = Date.now();
+      const timeSinceLastChunk = now - lastChunkTime;
+      lastChunkTime = now;
+      
       if (e.data && e.data.size > 0) {
-        console.log(`[Recording] Chunk ${chunkCount}: ${e.data.size} bytes`);
+        totalDataReceived += e.data.size;
+        console.log(`[Recording] Chunk ${chunkCount}: ${e.data.size} bytes (${timeSinceLastChunk}ms since last)`);
         chunksRef.current.push(e.data);
+        
+        // Real-time health check - warn if chunks are too small
+        const expectedSizePerChunk = 50000; // ~50KB per second minimum
+        if (e.data.size < expectedSizePerChunk && elapsed > 5) {
+          console.warn(`[Recording] Small chunk detected: ${e.data.size} bytes (expected ~${expectedSizePerChunk})`);
+        }
       } else {
-        console.warn(`[Recording] Empty chunk ${chunkCount} received`);
+        console.error(`[Recording] Empty chunk ${chunkCount} received after ${timeSinceLastChunk}ms`);
+      }
+      
+      // Log recording health every 10 chunks
+      if (chunkCount % 10 === 0) {
+        const avgChunkSize = totalDataReceived / chunkCount;
+        console.log(`[Recording] Health check - ${chunkCount} chunks, ${totalDataReceived} bytes total, ${avgChunkSize.toFixed(0)} avg/chunk`);
       }
     };
     
     recorder.onstop = () => {
-      console.log(`[Recording] Stop event - ${chunksRef.current.length} chunks collected, total chunks seen: ${chunkCount}`);
+      console.log(`[Recording] Stop event - ${chunksRef.current.length} chunks collected, ${totalDataReceived} bytes total`);
       
       // Validate chunks before creating blob
       const validChunks = chunksRef.current.filter(chunk => chunk && chunk.size > 0);
@@ -813,47 +814,74 @@ function RecordCard({ onAnalysisStarted, question, isMonthlyReflection, isMonthl
       
       if (validChunks.length === 0 || totalSize === 0) {
         console.error(`[Recording] No valid chunks found!`);
-        setError("Recording failed - no data captured. Please try again with a different browser or use the upload option.");
+        setError("Recording failed - no data captured. Browser may not support recording.");
         setStep("setup");
         cleanup();
         return;
       }
       
-      // Check if we have reasonable amount of data for the recording time
-      const expectedMinSize = elapsed * 5000; // ~5KB per second minimum (very conservative)
+      // More aggressive size validation
+      const expectedMinSize = elapsed * 3000; // ~3KB per second (very conservative)
+      const expectedMaxSize = elapsed * 500000; // ~500KB per second (generous)
+      
       if (totalSize < expectedMinSize) {
-        console.error(`[Recording] Insufficient data: ${totalSize} bytes for ${elapsed}s (expected min: ${expectedMinSize})`);
-        setError(`Recording seems corrupted (${Math.round(totalSize/1024)}KB for ${elapsed}s). Please try again or use upload option.`);
+        console.error(`[Recording] File too small: ${totalSize} bytes for ${elapsed}s (expected min: ${expectedMinSize})`);
+        setError(`Recording corrupted - file too small (${Math.round(totalSize/1024)}KB for ${elapsed}s). Try a different browser.`);
         setStep("setup");
         cleanup();
         return;
+      }
+      
+      if (totalSize > expectedMaxSize) {
+        console.warn(`[Recording] File very large: ${totalSize} bytes for ${elapsed}s (expected max: ${expectedMaxSize})`);
       }
       
       console.log(`[Recording] Creating blob with MIME type: ${mimeTypeRef.current}`);
       const blob = new Blob(validChunks, { type: mimeTypeRef.current });
       console.log(`[Recording] Blob created - type: ${blob.type}, size: ${blob.size}`);
       
-      pendingBlobRef.current = blob; // store for useEffect to pick up after render
+      // Final validation - check if blob is accessible
+      try {
+        const url = URL.createObjectURL(blob);
+        URL.revokeObjectURL(url); // Clean up immediately
+        console.log(`[Recording] Blob validation passed`);
+      } catch (blobErr) {
+        console.error(`[Recording] Blob creation failed:`, blobErr);
+        setError("Recording failed - could not create video file. Try a different browser.");
+        setStep("setup");
+        cleanup();
+        return;
+      }
+      
+      pendingBlobRef.current = blob;
       setRecordedBlob(blob);
       setStep("preview");
       cleanup();
     };
     
-    // Add error event handler
     recorder.onerror = (e) => {
       console.error(`[Recording] MediaRecorder error:`, e);
-      setError(`Recording error: ${e.error?.message || 'Unknown error'}. Please try again or use upload option.`);
+      setError(`Recording error: ${e.error?.message || 'Unknown error'}. Try a different browser.`);
       setStep("setup");
       cleanup();
     };
     
-    // Add state change logging
     recorder.onstatechange = (e) => {
       console.log(`[Recording] State changed to: ${recorder.state}`);
     };
     
-    // Start with longer intervals for better stability (1000ms)
-    recorder.start(1000); // Back to 1000ms for stability
+    // Start with 2-second intervals for better chunk collection
+    try {
+      recorder.start(2000);
+      console.log(`[Recording] Started with 2000ms intervals`);
+    } catch (startErr) {
+      console.error(`[Recording] Failed to start:`, startErr);
+      setError("Could not start recording. Try a different browser.");
+      setStep("setup");
+      cleanup();
+      return;
+    }
+    
     setStep("recording");
     setElapsed(0);
     setIsPaused(false);
@@ -1002,24 +1030,6 @@ function RecordCard({ onAnalysisStarted, question, isMonthlyReflection, isMonthl
   return (
     <div className="card">
       <div className="section-title">🎥 Record Video for Analysis</div>
-      
-      {/* Browser recording issues notice */}
-      <div style={{
-        background: "rgba(248,113,113,0.1)", 
-        border: "1px solid rgba(248,113,113,0.3)",
-        borderRadius: 12, 
-        padding: "1rem", 
-        marginBottom: "1.5rem",
-        fontSize: "0.85rem", 
-        color: "rgba(255,255,255,0.8)", 
-        lineHeight: 1.6,
-      }}>
-        ⚠️ <strong style={{ color: "#f87171" }}>Recording Issues Detected:</strong> Some browsers have compatibility issues with in-browser recording. 
-        <br />
-        <strong style={{ color: "#38bdf8" }}>Recommended:</strong> Use your phone's camera app to record, then use the "📁 Upload Video" option above for best results.
-        <br />
-        <span style={{ fontSize: "0.8rem", opacity: 0.8 }}>You can still try browser recording below, but upload is more reliable.</span>
-      </div>
 
       {/* ── SETUP ── */}
       {step === "setup" && (
@@ -1045,7 +1055,7 @@ function RecordCard({ onAnalysisStarted, question, isMonthlyReflection, isMonthl
             borderRadius: 10, padding: "0.75rem 1rem", marginBottom: "1.25rem",
             fontSize: "0.8rem", color: "rgba(255,255,255,0.7)", lineHeight: 1.5,
           }}>
-            💡 <strong style={{ color: "#38bdf8" }}>Having recording issues?</strong> Try Chrome/Edge browsers for best compatibility. If recording fails, use the "Upload Video" option above.
+            💡 <strong style={{ color: "#38bdf8" }}>For best results:</strong> Use Chrome or Edge browsers. Recording uses advanced browser features that work best in modern browsers.
           </div>
 
           {/* Monthly reflection reminder inside record card */}
