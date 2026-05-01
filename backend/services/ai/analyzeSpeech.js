@@ -148,11 +148,21 @@ function detectPauses(words, pauseThreshold = 1.5) {
   if (!words || words.length < 2) return [];
   const pauses = [];
   for (let i = 1; i < words.length; i++) {
-    const gap = words[i].start - words[i - 1].end;
+    const prevWord = words[i - 1];
+    const currWord = words[i];
+    
+    // Safety check for undefined words or missing properties
+    if (!prevWord || !currWord || 
+        typeof prevWord.end !== 'number' || 
+        typeof currWord.start !== 'number') {
+      continue;
+    }
+    
+    const gap = currWord.start - prevWord.end;
     if (gap >= pauseThreshold) {
       pauses.push({
-        after: words[i - 1].word.trim(),
-        before: words[i].word.trim(),
+        after: (prevWord.word || "").trim(),
+        before: (currWord.word || "").trim(),
         duration: Math.round(gap * 10) / 10,
       });
     }

@@ -201,10 +201,10 @@ export async function transcribe(audioPath, opts = {}) {
   let spokenDuration = data.duration || 0;
   if (words.length > 0) {
     const lastWord = words[words.length - 1];
-    spokenDuration = lastWord.end || spokenDuration;
+    spokenDuration = (lastWord && lastWord.end) ? lastWord.end : spokenDuration;
   } else if (filteredSegments.length > 0) {
     const lastSeg = filteredSegments[filteredSegments.length - 1];
-    spokenDuration = lastSeg.end || spokenDuration;
+    spokenDuration = (lastSeg && lastSeg.end) ? lastSeg.end : spokenDuration;
   }
 
   const droppedSegments = allSegments.length - filteredSegments.length;
@@ -237,31 +237,37 @@ function analyzeRhythm(words) {
     return { speechRatio: null, longestPause: null, rushesAtStart: false, rushesAtEnd: false, paceConsistency: null };
   }
 
-  const totalDuration = words[words.length - 1].end - words[0].start;
+  // Validate that all words have required properties
+  const validWords = words.filter(w => w && typeof w.start === 'number' && typeof w.end === 'number');
+  if (validWords.length < 3) {
+    return { speechRatio: null, longestPause: null, rushesAtStart: false, rushesAtEnd: false, paceConsistency: null };
+  }
+
+  const totalDuration = validWords[validWords.length - 1].end - validWords[0].start;
   if (totalDuration <= 0) return { speechRatio: null, longestPause: null, rushesAtStart: false, rushesAtEnd: false, paceConsistency: null };
 
   // Total time actually speaking (sum of word durations)
-  const speakingTime = words.reduce((sum, w) => sum + (w.end - w.start), 0);
+  const speakingTime = validWords.reduce((sum, w) => sum + (w.end - w.start), 0);
   const speechRatio = Math.round((speakingTime / totalDuration) * 100); // % of time speaking
 
   // Find the longest pause
   let longestPause = 0;
   let longestPauseAfter = "";
-  for (let i = 1; i < words.length; i++) {
-    const gap = words[i].start - words[i - 1].end;
+  for (let i = 1; i < validWords.length; i++) {
+    const gap = validWords[i].start - validWords[i - 1].end;
     if (gap > longestPause) {
       longestPause = gap;
-      longestPauseAfter = words[i - 1].word.trim();
+      longestPauseAfter = validWords[i - 1].word ? validWords[i - 1].word.trim() : "";
     }
   }
 
   // Detect rushing: compare WPM in first 20% vs last 20% of speech
-  const cutoff = Math.floor(words.length * 0.2);
-  const startWords = words.slice(0, Math.max(cutoff, 3));
-  const endWords = words.slice(Math.max(words.length - cutoff, words.length - 3));
+  const cutoff = Math.floor(validWords.length * 0.2);
+  const startWords = validWords.slice(0, Math.max(cutoff, 3));
+  const endWords = validWords.slice(Math.max(validWords.length - cutoff, validWords.length - 3));
 
-  const startDuration = startWords[startWords.length - 1].end - startWords[0].start;
-  const endDuration = endWords[endWords.length - 1].end - endWords[0].start;
+  const startDuration = startWords.length > 0 ? startWords[startWords.length - 1].end - startWords[0].start : 0;
+  const endDuration = endWords.length > 0 ? endWords[endWords.length - 1].end - endWords[0].start : 0;
 
   const startWpm = startDuration > 0 ? (startWords.length / startDuration) * 60 : 0;
   const endWpm = endDuration > 0 ? (endWords.length / endDuration) * 60 : 0;
@@ -272,15 +278,15 @@ function analyzeRhythm(words) {
   // Pace consistency: measure WPM variance across 5-second sliding windows.
   // More meaningful than inter-word gap stdDev — captures speed changes a listener notices.
   let paceConsistency = null;
-  if (words.length >= 10) {
+  if (validWords.length >= 10) {
     const windowSec = 5;
     const windowWpms = [];
-    let winStart = words[0].start;
-    const totalEnd = words[words.length - 1].end;
+    let winStart = validWords[0].start;
+    const totalEnd = validWords[validWords.length - 1].end;
 
     while (winStart + windowSec <= totalEnd + 0.5) {
       const winEnd = winStart + windowSec;
-      const winWords = words.filter(w => w.start >= winStart && w.end <= winEnd);
+      const winWords = validWords.filter(w => w.start >= winStart && w.end <= winEnd);
       if (winWords.length >= 2) {
         const actualDur = winWords[winWords.length - 1].end - winWords[0].start;
         if (actualDur > 0) windowWpms.push((winWords.length / actualDur) * 60);

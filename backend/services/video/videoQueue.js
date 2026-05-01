@@ -213,11 +213,18 @@ export async function enqueueRetry(reportId, videoUrl, phone, displayName) {
     
     console.log(`[Queue] Downloaded ${(buffer.byteLength / 1024 / 1024).toFixed(1)}MB to ${tempPath}`);
     
+    // Get the stored duration from the report if available
+    const VideoReport = (await import("../../../models/videoReportSchema.js")).default;
+    const report = await VideoReport.findById(reportId);
+    const storedDuration = report?.videoDuration;
+    
     return enqueue({ 
       reportId, 
       videoPath: tempPath,
       phone, 
-      displayName
+      displayName,
+      knownDuration: storedDuration, // Pass the known duration for retry
+    });
     });
   } catch (err) {
     console.error(`[Queue] Retry failed for ${reportId}:`, err.message);
