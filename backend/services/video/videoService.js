@@ -109,7 +109,7 @@ export async function confirmDirectUpload(key, publicUrl, mimeType, isPublic, us
     throw error;
   }
 
-  const userId = user.id;
+  const authId = user.id; // JWT contains auth._id as 'id'
   const phone = user.phone;
   const isWebm = baseType.includes("webm") || key.endsWith(".webm");
   const strippedPhone = phone.replace(/^(\+91|91)/, "");
@@ -132,8 +132,17 @@ export async function confirmDirectUpload(key, publicUrl, mimeType, isPublic, us
     console.warn("[VideoService] Could not check file size:", headErr.message);
   }
 
-  // Find user
+  // Find user by phone (reports should link to User._id, not Auth._id)
   const userDoc = await User.findOne({ phone: { $in: [phone, strippedPhone] } });
+  
+  if (!userDoc) {
+    console.error("[ConfirmUpload] User not found by phone:", phone, "stripped:", strippedPhone);
+    const error = new Error("User not found");
+    error.statusCode = 404;
+    throw error;
+  }
+  
+  const userId = userDoc._id; // Use actual User._id for the report
 
   // Mark user as submitted
   await User.findOneAndUpdate(
@@ -188,7 +197,7 @@ export async function uploadVideo(file, user, isPublic, ipAddress, userAgent) {
     if (!ALLOWED_VIDEO_TYPES.includes(baseType)) {
       securityFlags.push('mime_mismatch');
       await UploadAudit.logUpload({
-        userId: user.id,
+        userId: authId, // Use authId for audit logs
         phone: user.phone,
         uploadType: 'direct',
         fileName: file.originalname,
@@ -208,7 +217,7 @@ export async function uploadVideo(file, user, isPublic, ipAddress, userAgent) {
     }
 
     videoPath = file.path;
-    const userId = user.id;
+    const authId = user.id; // JWT contains auth._id as 'id'
     const phone = user.phone;
     const strippedPhone = phone.replace(/^(\+91|91)/, "");
 
@@ -222,7 +231,7 @@ export async function uploadVideo(file, user, isPublic, ipAddress, userAgent) {
       if (!fileType || !fileType.mime.startsWith('video/')) {
         securityFlags.push('magic_byte_fail');
         await UploadAudit.logUpload({
-          userId, phone, uploadType: 'direct',
+          userId: authId, phone, uploadType: 'direct',
           fileName: file.originalname,
           fileSize: file.size,
           mimeType: file.mimetype,
@@ -241,7 +250,7 @@ export async function uploadVideo(file, user, isPublic, ipAddress, userAgent) {
       console.error("[VideoService] Magic byte validation failed:", magicErr);
       securityFlags.push('magic_byte_fail');
       await UploadAudit.logUpload({
-        userId, phone, uploadType: 'direct',
+        userId: authId, phone, uploadType: 'direct',
         fileName: file.originalname,
         fileSize: file.size,
         mimeType: file.mimetype,
@@ -264,7 +273,7 @@ export async function uploadVideo(file, user, isPublic, ipAddress, userAgent) {
       console.log(`[VideoService] Duration: ${duration}s`);
     } catch (err) {
       await UploadAudit.logUpload({
-        userId, phone, uploadType: 'direct',
+        userId: authId, phone, uploadType: 'direct',
         fileName: file.originalname,
         fileSize: file.size,
         mimeType: file.mimetype,
@@ -281,7 +290,7 @@ export async function uploadVideo(file, user, isPublic, ipAddress, userAgent) {
     if (duration < 60) {
       securityFlags.push('duration_invalid');
       await UploadAudit.logUpload({
-        userId, phone, uploadType: 'direct',
+        userId: authId, phone, uploadType: 'direct',
         fileName: file.originalname,
         fileSize: file.size,
         mimeType: file.mimetype,
@@ -315,7 +324,7 @@ export async function uploadVideo(file, user, isPublic, ipAddress, userAgent) {
     if (duration > maxDuration) {
       securityFlags.push('duration_invalid');
       await UploadAudit.logUpload({
-        userId, phone, uploadType: 'direct',
+        userId: authId, phone, uploadType: 'direct',
         fileName: file.originalname,
         fileSize: file.size,
         mimeType: file.mimetype,
@@ -334,7 +343,7 @@ export async function uploadVideo(file, user, isPublic, ipAddress, userAgent) {
 
     // Upload to R2
     try {
-      videoKey = getR2Key(userId.toString(), file.originalname);
+      videoKey = getR2Key(authId.toString(), file.originalname); // Use authId for R2 key
       videoUrl = await uploadToR2(videoPath, videoKey, file.mimetype);
       console.log(`[VideoService] Video saved: ${videoUrl}`);
     } catch (r2Err) {
@@ -343,8 +352,21 @@ export async function uploadVideo(file, user, isPublic, ipAddress, userAgent) {
       throw new Error("Failed to save video. Please try again.");
     }
 
-    // Create report
+    // Find user by phone (reports should link to User._id, not Auth._id)
     const userDoc = await User.findOne({ phone: { $in: [phone, strippedPhone] } });
+    
+    if (!userDoc) {
+      console.error("[UploadVideo] User not found by phone:", phone, "stripped:", strippedPhone);
+      if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
+      if (videoKey) {
+        try { await deleteFromR2(videoKey); } catch {}
+      }
+      const error = new Error("User not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    
+    const userId = userDoc._id; // Use actual User._id for the report
 
     await User.findOneAndUpdate(
       { phone: { $in: [phone, strippedPhone] } },
@@ -370,7 +392,7 @@ export async function uploadVideo(file, user, isPublic, ipAddress, userAgent) {
 
     // Log successful upload
     await UploadAudit.logUpload({
-      userId,
+      userId: authId, // Use authId for audit logs
       phone,
       uploadType: 'direct',
       fileName: file.originalname,
@@ -418,7 +440,7 @@ export async function uploadVideo(file, user, isPublic, ipAddress, userAgent) {
 /**
  * Get video report
  */
-export async function getVideoReport(reportId, userId) {
+export async function getVideoReport(reportId, authId) {
   const report = await VideoReport.findById(reportId);
   
   if (!report) {
@@ -427,7 +449,28 @@ export async function getVideoReport(reportId, userId) {
     throw error;
   }
   
-  if (report.userId.toString() !== userId) {
+  // Import Auth model to find the auth record
+  const Auth = (await import("../../../models/authSchema.js")).default;
+  
+  // Find the auth record by ID (JWT contains auth._id as 'id')
+  const auth = await Auth.findById(authId);
+  if (!auth) {
+    const error = new Error("User not found");
+    error.statusCode = 404;
+    throw error;
+  }
+  
+  // Find the user by phone to get the actual User._id
+  const stripped = auth.phone.replace(/^(\+91|91)/, "");
+  const user = await User.findOne({ phone: { $in: [auth.phone, stripped] } });
+  
+  if (!user) {
+    const error = new Error("User not found");
+    error.statusCode = 404;
+    throw error;
+  }
+  
+  if (report.userId.toString() !== user._id.toString()) {
     const error = new Error("Access denied");
     error.statusCode = 403;
     throw error;
@@ -481,7 +524,7 @@ export async function getCommunityFeed() {
 /**
  * Toggle video visibility
  */
-export async function toggleVideoVisibility(reportId, userId) {
+export async function toggleVideoVisibility(reportId, authId) {
   const report = await VideoReport.findById(reportId);
   
   if (!report) {
@@ -490,7 +533,28 @@ export async function toggleVideoVisibility(reportId, userId) {
     throw error;
   }
   
-  if (report.userId.toString() !== userId) {
+  // Import Auth model to find the auth record
+  const Auth = (await import("../../../models/authSchema.js")).default;
+  
+  // Find the auth record by ID (JWT contains auth._id as 'id')
+  const auth = await Auth.findById(authId);
+  if (!auth) {
+    const error = new Error("User not found");
+    error.statusCode = 404;
+    throw error;
+  }
+  
+  // Find the user by phone to get the actual User._id
+  const stripped = auth.phone.replace(/^(\+91|91)/, "");
+  const user = await User.findOne({ phone: { $in: [auth.phone, stripped] } });
+  
+  if (!user) {
+    const error = new Error("User not found");
+    error.statusCode = 404;
+    throw error;
+  }
+  
+  if (report.userId.toString() !== user._id.toString()) {
     const error = new Error("Access denied");
     error.statusCode = 403;
     throw error;
@@ -511,9 +575,30 @@ export async function toggleVideoVisibility(reportId, userId) {
 /**
  * Get user's reports
  */
-export async function getUserReports(userId) {
+export async function getUserReports(authId) {
+  // Import Auth model to find the auth record
+  const Auth = (await import("../../../models/authSchema.js")).default;
+  
+  // Find the auth record by ID (JWT contains auth._id as 'id')
+  const auth = await Auth.findById(authId);
+  if (!auth) {
+    const error = new Error("User not found");
+    error.statusCode = 404;
+    throw error;
+  }
+  
+  // Find the user by phone to get the actual User._id
+  const stripped = auth.phone.replace(/^(\+91|91)/, "");
+  const user = await User.findOne({ phone: { $in: [auth.phone, stripped] } });
+  
+  if (!user) {
+    const error = new Error("User not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
   const reports = await VideoReport.find({
-    userId,
+    userId: user._id, // Use actual User._id
     expiresAt: { $gt: new Date() },
   })
     .sort({ submittedAt: -1 })
@@ -526,7 +611,7 @@ export async function getUserReports(userId) {
 /**
  * Delete video report
  */
-export async function deleteVideoReport(reportId, userId) {
+export async function deleteVideoReport(reportId, authId) {
   const report = await VideoReport.findById(reportId);
   
   if (!report) {
@@ -535,7 +620,28 @@ export async function deleteVideoReport(reportId, userId) {
     throw error;
   }
   
-  if (report.userId.toString() !== userId) {
+  // Import Auth model to find the auth record
+  const Auth = (await import("../../../models/authSchema.js")).default;
+  
+  // Find the auth record by ID (JWT contains auth._id as 'id')
+  const auth = await Auth.findById(authId);
+  if (!auth) {
+    const error = new Error("User not found");
+    error.statusCode = 404;
+    throw error;
+  }
+  
+  // Find the user by phone to get the actual User._id
+  const stripped = auth.phone.replace(/^(\+91|91)/, "");
+  const user = await User.findOne({ phone: { $in: [auth.phone, stripped] } });
+  
+  if (!user) {
+    const error = new Error("User not found");
+    error.statusCode = 404;
+    throw error;
+  }
+  
+  if (report.userId.toString() !== user._id.toString()) {
     const error = new Error("Access denied");
     error.statusCode = 403;
     throw error;
@@ -559,8 +665,8 @@ export async function deleteVideoReport(reportId, userId) {
 /**
  * Retry failed video analysis
  */
-export async function retryVideoAnalysis(reportId, userId) {
-  console.log("[RetryVideoAnalysis] Starting - reportId:", reportId, "userId:", userId);
+export async function retryVideoAnalysis(reportId, authId) {
+  console.log("[RetryVideoAnalysis] Starting - reportId:", reportId, "authId:", authId);
   
   const report = await VideoReport.findById(reportId);
   
@@ -571,10 +677,39 @@ export async function retryVideoAnalysis(reportId, userId) {
     throw error;
   }
   
-  console.log("[RetryVideoAnalysis] Report found - userId:", report.userId, "requestUserId:", userId);
+  console.log("[RetryVideoAnalysis] Report found - userId:", report.userId, "requestAuthId:", authId);
   
-  if (report.userId.toString() !== userId) {
-    console.error("[RetryVideoAnalysis] Access denied - report.userId:", report.userId, "requestUserId:", userId);
+  // Import Auth model to find the auth record
+  const Auth = (await import("../../../models/authSchema.js")).default;
+  
+  // Find the auth record by ID (JWT contains auth._id as 'id')
+  console.log("[RetryVideoAnalysis] Looking up auth record by ID:", authId);
+  const auth = await Auth.findById(authId);
+  if (!auth) {
+    console.error("[RetryVideoAnalysis] Auth record not found by ID:", authId);
+    const error = new Error("User not found");
+    error.statusCode = 404;
+    throw error;
+  }
+  
+  console.log("[RetryVideoAnalysis] Auth found - phone:", auth.phone, "name:", auth.name);
+  
+  // Find the user by phone (reports are linked by phone/userId, not authId)
+  const stripped = auth.phone.replace(/^(\+91|91)/, "");
+  const user = await User.findOne({ phone: { $in: [auth.phone, stripped] } });
+  
+  if (!user) {
+    console.error("[RetryVideoAnalysis] User not found by phone:", auth.phone, "stripped:", stripped);
+    const error = new Error("User not found");
+    error.statusCode = 404;
+    throw error;
+  }
+  
+  console.log("[RetryVideoAnalysis] User found:", user.name, "userId:", user._id);
+  
+  // Check if this user owns the report
+  if (report.userId.toString() !== user._id.toString()) {
+    console.error("[RetryVideoAnalysis] Access denied - report.userId:", report.userId, "user._id:", user._id);
     const error = new Error("Access denied");
     error.statusCode = 403;
     throw error;
@@ -589,25 +724,13 @@ export async function retryVideoAnalysis(reportId, userId) {
 
   // Reset report status and clear error
   report.status = "processing";
-  report.error = null;
+  report.errorMessage = null;
   report.analysis = {};
   await report.save();
 
-  // Re-enqueue for processing
-  console.log("[RetryVideoAnalysis] Looking up user:", userId);
-  const user = await User.findById(userId);
-  if (!user) {
-    console.error("[RetryVideoAnalysis] User not found:", userId);
-    const error = new Error("User not found");
-    error.statusCode = 404;
-    throw error;
-  }
-  
-  console.log("[RetryVideoAnalysis] User found:", user.name, "phone:", user.phone);
-  
   if (report.videoUrl) {
     console.log("[RetryVideoAnalysis] Re-enqueuing video:", report.videoUrl);
-    await downloadAndEnqueue(reportId, report.videoUrl, user.phone || user.userId || userId, user.name || "User");
+    await downloadAndEnqueue(reportId, report.videoUrl, user.phone || user.userId || user._id, user.name || "User");
   }
   
   return { 
