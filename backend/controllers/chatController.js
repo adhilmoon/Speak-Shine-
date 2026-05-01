@@ -22,6 +22,23 @@ export async function getGroupChatHistory(req, res) {
 }
 
 /**
+ * GET /api/chat/peers - Role-aware DM peer list
+ *   admin   → all active users except self
+ *   trainer → regular users
+ *   user    → admins + trainers
+ */
+export async function getPeers(req, res) {
+  try {
+    const { phone, role } = req.user;
+    const result = await chatService.getPeers(phone, role);
+    res.json(result);
+  } catch (error) {
+    console.error("[Chat] Get peers error:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+}
+
+/**
  * GET /api/chat/trainers - List available trainers to DM (user)
  */
 export async function getAvailableTrainers(req, res) {

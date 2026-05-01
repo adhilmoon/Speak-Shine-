@@ -74,10 +74,33 @@ export async function getAvailableTrainers() {
 export async function getAvailableUsers() {
   const users = await Auth.find(
     { role: "user", isActive: true },
-    { phone: 1, name: 1 }
+    { phone: 1, name: 1, role: 1 }
   ).lean();
   
   return users;
+}
+
+/**
+ * Get DM peer list based on the caller's role:
+ *   admin   → everyone (trainers + users), excluding self
+ *   trainer → users only
+ *   user    → admins + trainers only
+ */
+export async function getPeers(myPhone, myRole) {
+  let query;
+  if (myRole === "admin") {
+    // Admin sees all active users except themselves
+    query = { isActive: true, phone: { $ne: myPhone } };
+  } else if (myRole === "trainer") {
+    // Trainer sees regular users
+    query = { role: "user", isActive: true };
+  } else {
+    // Regular user sees admins and trainers
+    query = { role: { $in: ["admin", "trainer"] }, isActive: true };
+  }
+
+  const peers = await Auth.find(query, { phone: 1, name: 1, role: 1 }).lean();
+  return peers;
 }
 
 /**
