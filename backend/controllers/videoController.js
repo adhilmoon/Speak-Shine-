@@ -213,13 +213,20 @@ export async function retryAnalysis(req, res) {
   try {
     const { reportId } = req.params;
     
+    console.log("[RetryAnalysis] Request - reportId:", reportId, "user:", req.user);
+    
+    if (!req.user || !req.user.id) {
+      console.error("[RetryAnalysis] No user or user.id in request:", req.user);
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    
     const result = await videoService.retryVideoAnalysis(reportId, req.user.id);
     res.json(result);
   } catch (error) {
     if (error.statusCode) {
       return res.status(error.statusCode).json({ error: error.message });
     }
-    console.error("[RetryAnalysis] Error:", error.message);
+    console.error("[RetryAnalysis] Error:", error.message, "Stack:", error.stack);
     res.status(500).json({ error: "Failed to retry analysis" });
   }
 }

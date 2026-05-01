@@ -560,21 +560,28 @@ export async function deleteVideoReport(reportId, userId) {
  * Retry failed video analysis
  */
 export async function retryVideoAnalysis(reportId, userId) {
+  console.log("[RetryVideoAnalysis] Starting - reportId:", reportId, "userId:", userId);
+  
   const report = await VideoReport.findById(reportId);
   
   if (!report) {
+    console.error("[RetryVideoAnalysis] Report not found:", reportId);
     const error = new Error("Report not found");
     error.statusCode = 404;
     throw error;
   }
   
+  console.log("[RetryVideoAnalysis] Report found - userId:", report.userId, "requestUserId:", userId);
+  
   if (report.userId.toString() !== userId) {
+    console.error("[RetryVideoAnalysis] Access denied - report.userId:", report.userId, "requestUserId:", userId);
     const error = new Error("Access denied");
     error.statusCode = 403;
     throw error;
   }
 
   if (report.status !== "failed") {
+    console.error("[RetryVideoAnalysis] Invalid status:", report.status);
     const error = new Error("Can only retry failed analyses");
     error.statusCode = 400;
     throw error;
@@ -587,14 +594,19 @@ export async function retryVideoAnalysis(reportId, userId) {
   await report.save();
 
   // Re-enqueue for processing
+  console.log("[RetryVideoAnalysis] Looking up user:", userId);
   const user = await User.findById(userId);
   if (!user) {
+    console.error("[RetryVideoAnalysis] User not found:", userId);
     const error = new Error("User not found");
     error.statusCode = 404;
     throw error;
   }
   
+  console.log("[RetryVideoAnalysis] User found:", user.name, "phone:", user.phone);
+  
   if (report.videoUrl) {
+    console.log("[RetryVideoAnalysis] Re-enqueuing video:", report.videoUrl);
     await downloadAndEnqueue(reportId, report.videoUrl, user.phone || user.userId || userId, user.name || "User");
   }
   
