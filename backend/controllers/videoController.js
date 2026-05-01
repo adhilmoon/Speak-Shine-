@@ -155,6 +155,11 @@ export async function reactToVideo(req, res) {
     const { reaction } = req.body;
     const phone = req.user.phone;
 
+    const { isValidObjectId } = await import("../utils/textSanitizer.js");
+    if (!isValidObjectId(reportId)) {
+      return res.status(400).json({ error: "Invalid report ID" });
+    }
+
     if (!["like", "dislike"].includes(reaction)) {
       return res.status(400).json({ error: "reaction must be 'like' or 'dislike'" });
     }
@@ -169,12 +174,9 @@ export async function reactToVideo(req, res) {
     const field    = reaction === "like" ? "likes"    : "dislikes";
 
     const alreadyReacted = report[field].includes(phone);
-
-    // Remove from opposite side always
     report[opposite] = report[opposite].filter(p => p !== phone);
 
     if (alreadyReacted) {
-      // Toggle off
       report[field] = report[field].filter(p => p !== phone);
     } else {
       report[field].push(phone);
@@ -199,8 +201,19 @@ export async function addComment(req, res) {
     const { text } = req.body;
     const { phone, name, role } = req.user;
 
-    if (!text?.trim()) return res.status(400).json({ error: "Comment text required" });
-    if (text.trim().length > 500) return res.status(400).json({ error: "Comment too long (max 500 chars)" });
+    // Validate reportId format
+    const { isValidObjectId, sanitizeText, SanitizeError, LIMITS } = await import("../utils/textSanitizer.js");
+    if (!isValidObjectId(reportId)) {
+      return res.status(400).json({ error: "Invalid report ID" });
+    }
+
+    // Sanitize comment text
+    let cleanText;
+    try {
+      cleanText = sanitizeText(text, LIMITS.COMMENT, "Comment");
+    } catch (err) {
+      return res.status(400).json({ error: err instanceof SanitizeError ? err.message : "Invalid comment" });
+    }
 
     const VideoReport = (await import("../../models/videoReportSchema.js")).default;
     const report = await VideoReport.findById(reportId);
@@ -208,7 +221,12 @@ export async function addComment(req, res) {
       return res.status(404).json({ error: "Video not found" });
     }
 
-    const comment = { phone, name, role, text: text.trim(), createdAt: new Date() };
+    // Max 100 comments per video to prevent abuse
+    if (report.comments.length >= 100) {
+      return res.status(429).json({ error: "Comment limit reached for this video" });
+    }
+
+    const comment = { phone, name, role, text: cleanText, createdAt: new Date() };
     report.comments.push(comment);
     await report.save();
 
@@ -228,6 +246,11 @@ export async function deleteComment(req, res) {
   try {
     const { reportId, commentId } = req.params;
     const { phone, role } = req.user;
+
+    const { isValidObjectId } = await import("../utils/textSanitizer.js");
+    if (!isValidObjectId(reportId) || !isValidObjectId(commentId)) {
+      return res.status(400).json({ error: "Invalid ID" });
+    }
 
     const VideoReport = (await import("../../models/videoReportSchema.js")).default;
     const report = await VideoReport.findById(reportId);
