@@ -44,7 +44,7 @@ async function extractFrame(videoPath, timestamp, frameIndex) {
     "pipe:1",
   ], { encoding: "buffer", maxBuffer: 5 * 1024 * 1024, timeout: 15000 })
     .then(({ stdout }) => {
-      if (!stdout || stdout.length < 1000) return null;
+      if (!stdout || stdout.length < 500) return null;
       return { base64: stdout.toString("base64"), timestamp, frameIndex };
     })
     .catch(() => null);
@@ -358,29 +358,31 @@ export async function analyzeVideo(videoPath) {
     return null;
   }
 
-  // Build batch index ranges — e.g. 16 frames / 4 per batch = 4 batches
+  // Process batches SEQUENTIALLY to keep peak memory at 4 frames max.
+  // Each batch: extract 4 frames → send to Groq → free base64 → next batch.
+  // This keeps 16-frame quality while never holding all 16 in memory at once.
   const totalBatches = Math.ceil(timestamps.length / GROQ_BATCH_LIMIT);
-  console.log(`[Visual] ${timestamps.length} frames → ${totalBatches} batches of ${GROQ_BATCH_LIMIT}, processing all in parallel`);
+  console.log(`[Visual] ${timestamps.length} frames → ${totalBatches} batches of ${GROQ_BATCH_LIMIT}, processing sequentially to limit memory`);
 
-  // Extract all frames for all batches in parallel, then fire all API calls at once.
-  // Each batch uses a different Groq key (round-robin), so 4 batches × 4 keys = no rate limit collisions.
-  // Memory: 4 frames × ~150KB base64 × 4 batches = ~2.4MB — well within safe limits.
-  const batchPromises = Array.from({ length: totalBatches }, async (_, batchIdx) => {
+  const batchResults = [];
+  for (let batchIdx = 0; batchIdx < totalBatches; batchIdx++) {
     const batchTimestamps = timestamps.slice(
       batchIdx * GROQ_BATCH_LIMIT,
       (batchIdx + 1) * GROQ_BATCH_LIMIT
     );
 
-    // Extract all frames in this batch in parallel (was sequential before)
-    const frameResults = await Promise.all(
-      batchTimestamps.map((ts, i) => {
-        const globalIdx = batchIdx * GROQ_BATCH_LIMIT + i;
-        return extractFrame(videoPath, ts, globalIdx);
-      })
-    );
-    const frames = frameResults.filter(Boolean);
+    // Extract this batch's frames sequentially
+    const frames = [];
+    for (let i = 0; i < batchTimestamps.length; i++) {
+      const globalIdx = batchIdx * GROQ_BATCH_LIMIT + i;
+      const frame = await extractFrame(videoPath, batchTimestamps[i], globalIdx);
+      if (frame) frames.push(frame);
+    }
 
-    if (frames.length === 0) return null;
+    if (frames.length === 0) {
+      batchResults.push(null);
+      continue;
+    }
 
     const startSec = frames[0].timestamp;
     const endSec = frames[frames.length - 1].timestamp;
@@ -391,13 +393,13 @@ export async function analyzeVideo(videoPath) {
       { index: batchIdx, total: totalBatches, startSec, endSec }
     );
 
-    // Free base64 data immediately after sending
+    // Free base64 data immediately after sending to Groq
     frames.forEach(f => { f.base64 = null; });
+    // Hint GC to reclaim the freed frame memory before next batch
+    if (global.gc) global.gc();
 
-    return result;
-  });
-
-  const batchResults = await Promise.all(batchPromises);
+    batchResults.push(result);
+  }
 
   // Merge all batch results with 60/40 second-half weighting
   const merged = mergeWeightedBatchResults(batchResults);
