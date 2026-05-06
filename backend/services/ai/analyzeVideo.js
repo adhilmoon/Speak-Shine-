@@ -38,11 +38,11 @@ async function extractFrame(videoPath, timestamp, frameIndex) {
     "-ss", String(timestamp),
     "-i", videoPath,
     "-frames:v", "1",
-    "-q:v", "4",           // balanced quality/size
-    "-vf", "scale=560:-1", // slightly smaller than original 640
+    "-q:v", "3",
+    "-vf", "scale=640:-1",
     "-f", "image2",
     "pipe:1",
-  ], { encoding: "buffer", maxBuffer: 3 * 1024 * 1024, timeout: 15000 })
+  ], { encoding: "buffer", maxBuffer: 5 * 1024 * 1024, timeout: 15000 })
     .then(({ stdout }) => {
       if (!stdout || stdout.length < 500) return null;
       return { base64: stdout.toString("base64"), timestamp, frameIndex };
