@@ -178,3 +178,59 @@ export async function generateQuestionsNow(req, res) {
     res.status(500).json({ error: error.message });
   }
 }
+
+/**
+ * POST /api/questions/clean-generic - Remove generic/shallow questions from DB (admin)
+ * Scans all questions and deletes ones that are too generic.
+ */
+export async function cleanGenericQuestions(req, res) {
+  try {
+    const Question = (await import("../../models/questionSchema.js")).default;
+    const all = await Question.find({ isManualSetup: { $ne: true } }).lean();
+
+    const GENERIC_TOPICS = [
+      "hobbies", "food", "weekend", "weekend plans", "favorite foods",
+      "music", "movies", "sports", "travel", "family", "friends",
+      "work", "school", "daily life", "morning routine", "free time",
+      "technology", "social media", "health", "exercise", "sleep",
+      "money", "shopping", "weather", "pets", "books",
+    ];
+
+    const GENERIC_PATTERNS = [
+      /^what (is|are) your (favorite|hobby|hobbies)/i,
+      /^do you (like|enjoy|love) /i,
+      /^how (was|is) your (day|week|weekend)/i,
+      /^tell me about yourself/i,
+      /^what do you (do|think) (for fun|in your free time|to relax)/i,
+      /^what are you doing (this|next) (weekend|week)/i,
+      /^(do|did) you (watch|read|listen)/i,
+    ];
+
+    const toDelete = all.filter(q => {
+      const topicLower = (q.topic || "").toLowerCase().trim();
+      const questionLower = (q.question || "").toLowerCase().trim();
+      if (GENERIC_TOPICS.some(t => topicLower === t || topicLower.includes(t))) return true;
+      if (GENERIC_PATTERNS.some(p => p.test(questionLower))) return true;
+      if (q.question.trim().length < 30) return true;
+      return false;
+    });
+
+    if (toDelete.length === 0) {
+      return res.json({ success: true, deleted: 0, message: "No generic questions found — bank is clean!" });
+    }
+
+    const ids = toDelete.map(q => q._id);
+    await Question.deleteMany({ _id: { $in: ids } });
+
+    console.log(`[Questions] Cleaned ${toDelete.length} generic questions`);
+    res.json({
+      success: true,
+      deleted: toDelete.length,
+      removed: toDelete.map(q => ({ topic: q.topic, question: q.question })),
+      message: `Removed ${toDelete.length} generic question${toDelete.length !== 1 ? "s" : ""}`,
+    });
+  } catch (error) {
+    console.error("[Questions] Clean generic error:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+}

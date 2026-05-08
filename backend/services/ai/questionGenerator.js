@@ -122,7 +122,46 @@ function questionIsDuplicate(newQuestion, existingQuestions) {
   });
 }
 
-// ── Rewrite a single question to sound human ─────────────────────────────────
+// ── Generic/shallow question detector ───────────────────────────────────────
+
+// Topics that are too vague — force rejection
+const GENERIC_TOPICS = [
+  "hobbies", "food", "weekend", "weekend plans", "favorite foods",
+  "music", "movies", "sports", "travel", "family", "friends",
+  "work", "school", "daily life", "morning routine", "free time",
+  "technology", "social media", "health", "exercise", "sleep",
+  "money", "shopping", "weather", "pets", "books",
+];
+
+// Question patterns that are too simple/generic
+const GENERIC_QUESTION_PATTERNS = [
+  /^what (is|are) your (favorite|hobby|hobbies)/i,
+  /^do you (like|enjoy|love) /i,
+  /^how (was|is) your (day|week|weekend)/i,
+  /^tell me about yourself/i,
+  /^what do you (do|think) (for fun|in your free time|to relax)/i,
+  /^what are you doing (this|next) (weekend|week)/i,
+  /^(do|did) you (watch|read|listen)/i,
+  /^what('s| is) your (name|job|age)/i,
+];
+
+function isGenericQuestion(q) {
+  const topicLower = (q.topic || "").toLowerCase().trim();
+  const questionLower = (q.question || "").toLowerCase().trim();
+
+  // Reject if topic is in the generic list
+  if (GENERIC_TOPICS.some(t => topicLower === t || topicLower.includes(t))) return true;
+
+  // Reject if question matches generic patterns
+  if (GENERIC_QUESTION_PATTERNS.some(p => p.test(questionLower))) return true;
+
+  // Reject if question is too short (under 30 chars — not enough depth)
+  if (q.question.trim().length < 30) return true;
+
+  return false;
+}
+
+
 
 async function rewriteAsHuman(q) {
   const prompt = `Rewrite this English speaking practice question to sound like a real person casually asking a friend — not a formal exam or AI-generated question.
@@ -218,27 +257,36 @@ CATEGORIES TO GENERATE FOR:
 ${categoryList}
 
 STYLE RULES — questions must sound like a real person asking a friend, NOT a formal exam:
-✅ GOOD examples:
+✅ GOOD examples (specific, vivid, memorable):
 - "What's the weirdest food you've ever tried and actually liked?"
-- "If you could swap jobs with anyone for a week, who would it be?"
-- "What's one habit you keep trying to build but always give up on?"
+- "If you could swap jobs with anyone for a week, who would it be and what's the first thing you'd do?"
+- "What's one habit you keep trying to build but always give up on after a few days?"
 - "Tell me about a time you were completely lost — literally or figuratively."
-- "Which do you prefer: working early morning or late at night?"
+- "Which do you prefer: working early morning or late at night, and why does it suit you?"
+- "What's a movie or show you watched recently that you can't stop thinking about?"
+- "If your best friend described you in 3 words, what would they say?"
+- "What's something you believed as a kid that turned out to be completely wrong?"
 
-❌ BAD examples (do NOT write like this):
-- "Can you elaborate on how your morning routine reflects your personal values?"
-- "Share your thoughts on the importance of work-life balance in today's society."
-- "In what ways has technology impacted your daily life? Explain your reasoning."
-- "Reflect on a personal experience that shaped your perspective."
+❌ BAD examples — TOO GENERIC, TOO SIMPLE, TOO VAGUE (NEVER write like these):
+- "What do you do to relax?" ← too simple, everyone knows the answer
+- "What are you doing this weekend?" ← too casual, no depth
+- "What's your favorite food?" ← too basic
+- "Do you like music?" ← yes/no, no depth
+- "What is your hobby?" ← too vague
+- "Tell me about yourself." ← too open-ended
+- "What do you think about technology?" ← too broad
+- "How was your day?" ← not a practice question
+- "What's your favorite movie?" ← too simple
 
 HARD RULES:
 - NO phrases: "share your thoughts", "elaborate", "reflect on", "in what ways", "to what extent", "in today's world/society", "what are your thoughts on", "explain your reasoning", "why or why not"
 - NO questions ending with "and why?" or "explain your answer"
-- Keep questions under 130 characters
+- Keep questions under 140 characters
 - Vary the openers — don't start more than 2 questions with the same word
-- topic: short 1-sentence speaking prompt title
-- question: the actual question (conversational, direct, specific)
+- topic: a SPECIFIC 3-6 word title (NOT generic like "Hobbies" or "Food" — be specific like "Embarrassing Cooking Fails" or "Unexpected Travel Moments")
+- question: the actual question — must be SPECIFIC and INTERESTING, not something a 5-year-old would ask
 - Every question MUST be completely unique — no two questions should be about the same thing
+- Questions should make the speaker think and share a real personal story or opinion
 
 Return ONLY a valid JSON array, no markdown, no extra text:
 [
@@ -309,12 +357,17 @@ function validateAndDedup(candidates, existingTopics, existingQuestions) {
       skipped.push({ reason: `unknown category: ${q.category}`, q });
       continue;
     }
-    // 3. Topic uniqueness
+    // 3. Generic/shallow question
+    if (isGenericQuestion(q)) {
+      skipped.push({ reason: "too generic/shallow", q });
+      continue;
+    }
+    // 4. Topic uniqueness
     if (topicIsDuplicate(q.topic, acceptedTopics)) {
       skipped.push({ reason: "duplicate topic", q });
       continue;
     }
-    // 4. Question text uniqueness
+    // 5. Question text uniqueness
     if (questionIsDuplicate(q.question, acceptedQuestions)) {
       skipped.push({ reason: "duplicate question text", q });
       continue;

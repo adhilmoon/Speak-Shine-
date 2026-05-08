@@ -893,6 +893,26 @@ export default function AdminDashboard() {
                 >
                   🤖 Generate
                 </button>
+                <button
+                  className="btn-ghost danger"
+                  style={{ fontSize: "0.78rem", padding: "0.3rem 0.7rem" }}
+                  onClick={async () => {
+                    try {
+                      const res = await api.post("/questions/clean-generic");
+                      if (res.data.deleted === 0) {
+                        msg("✅ Bank is clean — no generic questions found");
+                      } else {
+                        msg(`🗑️ Removed ${res.data.deleted} generic question${res.data.deleted !== 1 ? "s" : ""}`, "danger");
+                        setDataLoaded(prev => ({ ...prev, questions: false }));
+                        loadQuestions();
+                      }
+                    } catch (e) {
+                      msg(e?.response?.data?.error || "Clean failed", "danger");
+                    }
+                  }}
+                >
+                  🗑️ Clean Generic
+                </button>
               </div>
               <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap"}}>
                 <select className="form-input" style={{width:"auto"}} value={qCat} onChange={e=>setQCat(e.target.value)}>
