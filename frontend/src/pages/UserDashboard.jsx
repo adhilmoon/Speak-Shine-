@@ -928,83 +928,88 @@ export default function UserDashboard() {
 
       {scores.length > 0 ? (
         <>
-          {/* Top Streaks — shown first */}
+          {/* ── Hall of Fame — all-time streak record (outside the box, golden) ── */}
+          {data?.streakRecord && (
+            <div style={{
+              marginBottom: "1rem",
+              background: "linear-gradient(135deg, #2a1f00 0%, #3d2e00 50%, #2a1f00 100%)",
+              border: "1.5px solid rgba(251,191,36,0.55)",
+              borderRadius: 14,
+              padding: "0.75rem 1rem",
+              display: "flex", alignItems: "center", gap: "0.75rem",
+              boxShadow: "0 0 24px rgba(251,191,36,0.12)",
+              position: "relative", overflow: "hidden",
+            }}>
+              {/* golden glow orb */}
+              <div style={{ position:"absolute", top:-30, right:-30, width:120, height:120, borderRadius:"50%", background:"radial-gradient(circle, rgba(251,191,36,0.18) 0%, transparent 70%)", pointerEvents:"none" }} />
+              <span style={{ fontSize: "1.6rem", flexShrink: 0 }}>👑</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: "0.6rem", fontWeight: 800, color: "rgba(251,191,36,0.7)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "0.15rem" }}>
+                  All-Time Streak Record
+                </div>
+                <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#fde68a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {data.streakRecord.name}
+                </div>
+                {data.streakRecord.achievedAt && (
+                  <div style={{ fontSize: "0.62rem", color: "rgba(251,191,36,0.5)", marginTop: "0.1rem" }}>
+                    Set on {new Date(data.streakRecord.achievedAt).toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" })}
+                  </div>
+                )}
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <div style={{ fontSize: "1.8rem", fontWeight: 900, color: "#fbbf24", lineHeight: 1 }}>
+                  {data.streakRecord.streak}
+                </div>
+                <div style={{ fontSize: "0.62rem", color: "rgba(251,191,36,0.6)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  day streak
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Top Streaks leaderboard ── */}
           {data?.topStreak?.length > 0 && (
             <div className="card" style={{ marginBottom: "1rem" }}>
               <div className="section-title">🏆 Top Streaks</div>
 
-              {/* ── My Streak Banner (always shown above the list) ── */}
-              {data?.myStreakEntry && (
-                <div style={{
-                  display: "flex", alignItems: "center", gap: "0.6rem",
-                  background: data.myStreakEntry.inTop5
-                    ? "rgba(124,111,255,0.08)"
-                    : "rgba(251,191,36,0.07)",
-                  border: `1px solid ${data.myStreakEntry.inTop5 ? "rgba(124,111,255,0.3)" : "rgba(251,191,36,0.25)"}`,
-                  borderRadius: 12,
-                  padding: "0.65rem 0.85rem",
-                  marginBottom: "0.85rem",
-                  flexWrap: "wrap",
-                  gap: "0.5rem",
-                }}>
-                  <span style={{ fontSize: "1.1rem" }}>
-                    {data.myStreakEntry.rank === 1 ? "🥇" : data.myStreakEntry.rank === 2 ? "🥈" : data.myStreakEntry.rank === 3 ? "🥉" : "🔥"}
-                  </span>
-                  <span style={{ fontWeight: 700, fontSize: "0.85rem", color: "#e2e8f0", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    You — {data.myStreakEntry.name || "Me"}
-                  </span>
-                  <span style={{ fontSize: "0.78rem", color: "#f97316", fontWeight: 700, whiteSpace: "nowrap" }}>
-                    🔥 {data.myStreakEntry.streak} days
-                  </span>
-                  <span style={{ fontSize: "0.72rem", color: "var(--muted)", whiteSpace: "nowrap" }}>
-                    {data.myStreakEntry.weeklySubmissions}/7
-                  </span>
-                  <span style={{
-                    fontSize: "0.72rem", fontWeight: 700,
-                    padding: "0.18rem 0.55rem", borderRadius: 20,
-                    background: data.myStreakEntry.completed ? "rgba(74,222,128,0.15)" : "rgba(248,113,113,0.12)",
-                    color: data.myStreakEntry.completed ? "#4ade80" : "#f87171",
-                    whiteSpace: "nowrap",
-                  }}>
-                    {data.myStreakEntry.completed ? "✅ Done" : "⏳ Pending"}
-                  </span>
-                  <span style={{
-                    fontSize: "0.7rem", fontWeight: 800,
-                    padding: "0.18rem 0.6rem", borderRadius: 20,
-                    background: data.myStreakEntry.inTop5 ? "rgba(124,111,255,0.2)" : "rgba(251,191,36,0.15)",
-                    color: data.myStreakEntry.inTop5 ? "#a78bfa" : "#fbbf24",
-                    whiteSpace: "nowrap",
-                  }}>
-                    #{data.myStreakEntry.rank}
-                  </span>
-                </div>
-              )}
-
-              {/* ── Top 5 list ── */}
+              {/* Top 5 list — highlight my row if I'm in it */}
               <div className="streak-list">
-                {data.topStreak.map((u, i) => (
-                  <div className="streak-row" key={i}>
-                    <span className="streak-rank">{["🥇","🥈","🥉"][i] || `${i+1}.`}</span>
-                    <span className="streak-name">{u.name || u.userId?.split("@")[0]}</span>
-                    <span className="streak-val">🔥 {u.streak} days</span>
-                    <span className="streak-sub">{u.weeklySubmissions}/7</span>
-                    <span style={{
-                      marginLeft: "auto",
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                      padding: "0.2rem 0.6rem",
-                      borderRadius: 20,
-                      background: u.completed ? "rgba(74,222,128,0.15)" : "rgba(248,113,113,0.12)",
-                      color: u.completed ? "#4ade80" : "#f87171",
-                      whiteSpace: "nowrap",
-                    }}>
-                      {u.completed ? "✅ Done" : "⏳ Pending"}
-                    </span>
-                  </div>
-                ))}
+                {data.topStreak.map((u, i) => {
+                  const isMe = data?.myStreakEntry?.inTop5 && data.myStreakEntry.rank === i + 1;
+                  return (
+                    <div
+                      className="streak-row"
+                      key={i}
+                      style={isMe ? {
+                        background: "rgba(124,111,255,0.13)",
+                        border: "1px solid rgba(124,111,255,0.35)",
+                        borderRadius: 10,
+                        padding: "0.45rem 0.6rem",
+                        margin: "0 -0.1rem",
+                      } : {}}
+                    >
+                      <span className="streak-rank">{["🥇","🥈","🥉"][i] || `${i+1}.`}</span>
+                      <span className="streak-name" style={isMe ? { color: "#a78bfa", fontWeight: 700 } : {}}>
+                        {u.name || u.userId?.split("@")[0]}
+                        {isMe && <span style={{ fontSize: "0.62rem", color: "#7c6fff", marginLeft: "0.3rem", opacity: 0.85 }}>(you)</span>}
+                      </span>
+                      <span className="streak-val">🔥 {u.streak} days</span>
+                      <span className="streak-sub">{u.weeklySubmissions}/7</span>
+                      <span style={{
+                        marginLeft: "auto", fontSize: "0.75rem", fontWeight: 600,
+                        padding: "0.2rem 0.6rem", borderRadius: 20,
+                        background: u.completed ? "rgba(74,222,128,0.15)" : "rgba(248,113,113,0.12)",
+                        color: u.completed ? "#4ade80" : "#f87171",
+                        whiteSpace: "nowrap",
+                      }}>
+                        {u.completed ? "✅ Done" : "⏳ Pending"}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
 
-              {/* ── My position row (only if NOT in top 5) ── */}
+              {/* My position row — only if NOT in top 5 */}
               {data?.myStreakEntry && !data.myStreakEntry.inTop5 && (
                 <>
                   <div style={{ borderTop: "1px dashed rgba(255,255,255,0.07)", margin: "0.5rem 0", position: "relative" }}>
@@ -1028,8 +1033,7 @@ export default function UserDashboard() {
                     <span className="streak-val">🔥 {data.myStreakEntry.streak} days</span>
                     <span className="streak-sub">{data.myStreakEntry.weeklySubmissions}/7</span>
                     <span style={{
-                      marginLeft: "auto",
-                      fontSize: "0.75rem", fontWeight: 600,
+                      marginLeft: "auto", fontSize: "0.75rem", fontWeight: 600,
                       padding: "0.2rem 0.6rem", borderRadius: 20,
                       background: data.myStreakEntry.completed ? "rgba(74,222,128,0.15)" : "rgba(248,113,113,0.12)",
                       color: data.myStreakEntry.completed ? "#4ade80" : "#f87171",

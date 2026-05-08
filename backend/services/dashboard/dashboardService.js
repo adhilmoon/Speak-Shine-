@@ -6,6 +6,7 @@
 import User from "../../../models/userSchema.js";
 import Status from "../../../models/statusSchema.js";
 import DailyReport from "../../../models/dailyReportSchema.js";
+import StreakRecord from "../../../models/streakRecordSchema.js";
 import { generateSVGPoster } from "../../../api/posterGenerator.js";
 
 /**
@@ -206,6 +207,7 @@ export async function getUserProfile(phone) {
     },
     topStreak,
     myStreakEntry,
+    streakRecord: await StreakRecord.findOne().lean(),
   };
 }
 
