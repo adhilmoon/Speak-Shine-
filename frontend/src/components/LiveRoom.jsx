@@ -388,25 +388,55 @@ function InnerRoom({ sessionId, userRole, onLeave, session }) {
   const [chatOpen,    setChatOpen]    = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [kicked,      setKicked]      = useState(false);
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const myPhone = user?.phone;
 
-  // Listen for kicked event
+  // ── Background socket listeners (always active, regardless of chat panel state) ──
   useEffect(() => {
     if (!token) return;
     const socket = getSharedSocket(token);
-    const onKicked = ({ sessionId: sid, identity }) => {
-      // Only trigger if this is for our session (server broadcasts to all)
+
+    // Count unread messages when chat panel is closed
+    const onLiveMessage = ({ message }) => {
+      if (!message) return;
+      // Only count messages from others, and only when chat is closed
+      if (message.from !== myPhone) {
+        setChatOpen(open => {
+          if (!open) setUnreadCount(c => c + 1);
+          return open;
+        });
+      }
+    };
+
+    // Kicked from session
+    const onKicked = ({ sessionId: sid }) => {
       if (sid?.toString() === sessionId?.toString()) {
         setKicked(true);
         setTimeout(onLeave, 3000);
       }
     };
-    socket.on("session:kicked", onKicked);
-    return () => socket.off("session:kicked", onKicked);
-  }, [token, sessionId]);
 
-  const handleUnread = () => setUnreadCount(c => c + 1);
-  const handleChatToggle = () => { setChatOpen(v => !v); if (!chatOpen) setUnreadCount(0); };
+    socket.on("live:message",   onLiveMessage);
+    socket.on("session:kicked", onKicked);
+
+    // Join the session chat room so we receive messages even when panel is closed
+    if (socket.connected) {
+      socket.emit("live:join", { sessionId });
+    }
+    const onConnect = () => socket.emit("live:join", { sessionId });
+    socket.on("connect", onConnect);
+
+    return () => {
+      socket.off("live:message",   onLiveMessage);
+      socket.off("session:kicked", onKicked);
+      socket.off("connect",        onConnect);
+    };
+  }, [token, sessionId, myPhone]);
+
+  const handleChatToggle = () => {
+    setChatOpen(v => !v);
+    if (!chatOpen) setUnreadCount(0); // clear badge when opening
+  };
 
   if (kicked) {
     return (
@@ -450,7 +480,7 @@ function InnerRoom({ sessionId, userRole, onLeave, session }) {
             <button onClick={() => setChatOpen(false)} style={{ background: "none", border: "none", color: "#55557a", cursor: "pointer", fontSize: "1rem" }}>✕</button>
           </div>
           <div className="live-room-chat" style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-            <LiveChat sessionId={sessionId} onUnread={handleUnread} />
+            <LiveChat sessionId={sessionId} />
           </div>
         </div>
       )}
