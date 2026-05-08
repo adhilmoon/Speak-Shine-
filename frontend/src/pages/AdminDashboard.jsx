@@ -60,11 +60,12 @@ export default function AdminDashboard() {
   const loadInitial = async () => {
     setLoading(true);
     try {
-      // Load dashboard + questions + weekly together for a complete overview
-      const [d, q, w] = await Promise.all([
+      // Load dashboard + questions + weekly + users together for a complete overview
+      const [d, q, w, u] = await Promise.all([
         api.get("/dashboard"),
         api.get("/questions?limit=200"),
         api.get("/dashboard/report/weekly"),
+        api.get("/users"),
       ]);
       setDash(d.data);
       setDataLoaded(prev => ({ ...prev, dashboard: true }));
@@ -73,7 +74,8 @@ export default function AdminDashboard() {
         setDataLoaded(prev => ({ ...prev, questions: true }));
       }
       setWeekly(w.data);
-      setDataLoaded(prev => ({ ...prev, reports: true }));
+      setUsers(u.data);
+      setDataLoaded(prev => ({ ...prev, reports: true, users: true }));
     } catch (err) {
       console.error("Failed to load dashboard:", err);
       try {
@@ -526,7 +528,7 @@ export default function AdminDashboard() {
                         {medals[i] || `${i+1}`}
                       </span>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
                           {u.name || u.userId?.split("@")[0]}
                         </div>
                         <div style={{ height: 3, background: "var(--border)", borderRadius: 99, marginTop: "0.3rem", overflow: "hidden" }}>
@@ -554,9 +556,9 @@ export default function AdminDashboard() {
             <div className="card">
               <div className="section-title">📅 Weekly Submissions</div>
               <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={weekly.slice(0,8).map(u=>({name:(u.name||"?").slice(0,7),days:u.weeklySubmissions||0}))} margin={{top:4,right:4,left:-20,bottom:0}}>
+                <BarChart data={weekly.slice(0,8).map(u=>({name:(u.name||"?").slice(0,6),days:u.weeklySubmissions||0}))} margin={{top:4,right:4,left:-20,bottom:20}}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/>
-                  <XAxis dataKey="name" stroke="#55557a" fontSize={10} tickLine={false} axisLine={false}/>
+                  <XAxis dataKey="name" stroke="#55557a" fontSize={9} tickLine={false} axisLine={false} angle={-30} textAnchor="end" interval={0}/>
                   <YAxis domain={[0,7]} stroke="#55557a" fontSize={10} tickLine={false} axisLine={false}/>
                   <Tooltip contentStyle={tt} cursor={{fill:"rgba(124,111,255,0.06)"}}/>
                   <Bar dataKey="days" radius={[6,6,0,0]}>
@@ -568,21 +570,50 @@ export default function AdminDashboard() {
               </ResponsiveContainer>
             </div>
 
-            {/* Fine leaderboard */}
+            {/* Pending Submissions */}
             <div className="card">
-              <div className="section-title">💸 Top Fines</div>
-              {fineBar.length === 0 ? (
-                <div style={{ textAlign: "center", color: "var(--muted)", fontSize: "0.82rem", padding: "2rem 0" }}>🎉 No fines yet!</div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
+                <div className="section-title" style={{ margin: 0 }}>⏳ Pending Today</div>
+                <span style={{
+                  fontSize: "0.72rem", fontWeight: 700,
+                  padding: "0.15rem 0.5rem", borderRadius: 20,
+                  background: "rgba(248,113,113,0.12)",
+                  color: "#f87171",
+                }}>
+                  {users.filter(u => !u.completed).length} left
+                </span>
+              </div>
+              {users.filter(u => !u.completed).length === 0 ? (
+                <div style={{ textAlign: "center", color: "var(--muted)", fontSize: "0.82rem", padding: "1.5rem 0" }}>
+                  🎉 Everyone submitted today!
+                </div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.45rem" }}>
-                  {fineBar.slice(0,6).map((u,i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                      <span style={{ fontSize: "0.72rem", color: "var(--muted)", width: 16, flexShrink: 0 }}>{i+1}</span>
-                      <span style={{ flex: 1, fontSize: "0.8rem", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name}</span>
-                      <div style={{ width: 60, height: 4, background: "var(--border)", borderRadius: 99, overflow: "hidden" }}>
-                        <div style={{ height: "100%", borderRadius: 99, background: "#f87171", width: `${Math.round((u.fine / fineBar[0].fine) * 100)}%` }} />
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", maxHeight: 200, overflowY: "auto" }}>
+                  {users.filter(u => !u.completed).map((u, i) => (
+                    <div key={u.userId || u.phone} style={{
+                      display: "flex", alignItems: "center", gap: "0.5rem",
+                      padding: "0.35rem 0.5rem", borderRadius: 8,
+                      background: "rgba(248,113,113,0.05)",
+                      border: "1px solid rgba(248,113,113,0.1)",
+                    }}>
+                      <div style={{
+                        width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
+                        background: "rgba(248,113,113,0.15)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: "0.65rem", fontWeight: 700, color: "#f87171",
+                      }}>
+                        {(u.registeredName || u.name || "?")[0]?.toUpperCase()}
                       </div>
-                      <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "#f87171", flexShrink: 0 }}>₹{u.fine}</span>
+                      <span style={{
+                        flex: 1, fontSize: "0.78rem", color: "var(--text)",
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        minWidth: 0,
+                      }}>
+                        {u.registeredName || u.name || u.phone}
+                      </span>
+                      <span style={{ fontSize: "0.68rem", color: "#f97316", flexShrink: 0 }}>
+                        🔥{u.streak || 0}
+                      </span>
                     </div>
                   ))}
                 </div>
