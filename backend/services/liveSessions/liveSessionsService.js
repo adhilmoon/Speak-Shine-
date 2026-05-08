@@ -160,11 +160,18 @@ export async function generateSessionToken(sessionId, identity, name, isAdmin) {
     throw error;
   }
 
+  // Check if user is banned from this session
+  if (!isAdmin && session.bannedParticipants?.includes(identity)) {
+    const error = new Error("You have been removed from this session by the host.");
+    error.statusCode = 403;
+    error.code = "SESSION_BANNED";
+    throw error;
+  }
+
   // Check participant limit (admins/trainers bypass the limit)
   if (!isAdmin) {
     const currentCount = session.participants.length;
     const maxAllowed = session.maxParticipants || 20;
-    // Only block if they're not already in the session
     if (!session.participants.includes(identity) && currentCount >= maxAllowed) {
       const error = new Error(
         `Session is full (${currentCount}/${maxAllowed} participants). Please try again later.`
@@ -269,51 +276,99 @@ export async function cancelSession(sessionId) {
 }
 
 /**
- * Mute a participant (admin only)
+ * Mute a participant's microphone (admin/trainer)
  */
 export async function muteParticipant(sessionId, participantIdentity) {
   const session = await LiveSession.findById(sessionId);
-  
-  if (!session) {
-    const error = new Error("Session not found");
-    error.statusCode = 404;
-    throw error;
-  }
-  
+  if (!session) { const e = new Error("Session not found"); e.statusCode = 404; throw e; }
+
   const svc = getRoomService();
   const participants = await svc.listParticipants(session.roomName);
   const target = participants.find(p => p.identity === participantIdentity);
-  
-  if (!target) {
-    const error = new Error("Participant not found in room");
-    error.statusCode = 404;
-    throw error;
-  }
-  
-  // Mute all audio tracks
+
+  if (!target) { const e = new Error("Participant not found in room"); e.statusCode = 404; throw e; }
+
   for (const track of target.tracks) {
     if (track.type === 0) { // Audio track
       await svc.mutePublishedTrack(session.roomName, target.identity, track.sid, true);
     }
   }
-  
-  return { ok: true };
+  return { ok: true, action: "muted" };
 }
 
 /**
- * Remove a participant from session (admin only)
+ * Disable a participant's camera (admin/trainer)
+ */
+export async function disableParticipantVideo(sessionId, participantIdentity) {
+  const session = await LiveSession.findById(sessionId);
+  if (!session) { const e = new Error("Session not found"); e.statusCode = 404; throw e; }
+
+  const svc = getRoomService();
+  const participants = await svc.listParticipants(session.roomName);
+  const target = participants.find(p => p.identity === participantIdentity);
+
+  if (!target) { const e = new Error("Participant not found in room"); e.statusCode = 404; throw e; }
+
+  for (const track of target.tracks) {
+    if (track.type === 1) { // Video track
+      await svc.mutePublishedTrack(session.roomName, target.identity, track.sid, true);
+    }
+  }
+  return { ok: true, action: "video_disabled" };
+}
+
+/**
+ * Kick a participant from the session and ban them from rejoining (admin/trainer)
+ * They will need admin/trainer approval to rejoin.
+ */
+export async function kickParticipant(sessionId, participantIdentity, io) {
+  const session = await LiveSession.findById(sessionId);
+  if (!session) { const e = new Error("Session not found"); e.statusCode = 404; throw e; }
+
+  // Add to banned list
+  if (!session.bannedParticipants.includes(participantIdentity)) {
+    session.bannedParticipants.push(participantIdentity);
+    await session.save();
+  }
+
+  // Remove from LiveKit room
+  try {
+    const svc = getRoomService();
+    await svc.removeParticipant(session.roomName, participantIdentity);
+  } catch (e) {
+    console.warn("[LiveKit] Could not remove participant:", e.message);
+  }
+
+  // Notify the kicked user via socket
+  if (io) {
+    io.emit("session:kicked", {
+      sessionId: session._id,
+      identity: participantIdentity,
+      message: "You have been removed from this session by the host.",
+    });
+  }
+
+  return { ok: true, action: "kicked", banned: true };
+}
+
+/**
+ * Approve a banned participant to rejoin (admin/trainer)
+ */
+export async function approveParticipant(sessionId, participantIdentity) {
+  const session = await LiveSession.findById(sessionId);
+  if (!session) { const e = new Error("Session not found"); e.statusCode = 404; throw e; }
+
+  // Remove from banned list
+  session.bannedParticipants = session.bannedParticipants.filter(p => p !== participantIdentity);
+  await session.save();
+
+  return { ok: true, action: "approved" };
+}
+
+/**
+ * Remove a participant from session without banning (admin/trainer)
+ * @deprecated Use kickParticipant for kick+ban behavior
  */
 export async function removeParticipant(sessionId, participantIdentity) {
-  const session = await LiveSession.findById(sessionId);
-  
-  if (!session) {
-    const error = new Error("Session not found");
-    error.statusCode = 404;
-    throw error;
-  }
-  
-  const svc = getRoomService();
-  await svc.removeParticipant(session.roomName, participantIdentity);
-  
-  return { ok: true };
+  return kickParticipant(sessionId, participantIdentity, null);
 }

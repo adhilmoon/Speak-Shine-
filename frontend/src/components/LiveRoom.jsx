@@ -21,6 +21,8 @@ import api from "../api/client.js";
 import { useToast } from "./Toast.jsx";
 import GroupChat from "./GroupChat.jsx";
 import LiveChat from "./LiveChat.jsx";
+import { useAuth } from "../context/AuthContext.jsx";
+import { getSharedSocket } from "../hooks/useSocket.js";
 
 // ── Device Picker Popup ───────────────────────────────────────────────────────
 function DevicePicker({ kind, onClose }) {
@@ -212,30 +214,42 @@ function CustomControls({ onLeave, chatOpen, onChatToggle, unreadCount }) {
 }
 
 // ── Participants Panel ────────────────────────────────────────────────────────
-function ParticipantsPanel({ sessionId }) {
+function ParticipantsPanel({ sessionId, onKicked }) {
   const participants = useParticipants();
   const [busy, setBusy]           = useState({});
   const [collapsed, setCollapsed] = useState(false);
   const toast = useToast();
 
-  const action = async (type, identity) => {
-    setBusy(b => ({ ...b, [identity]: type }));
+  const action = async (type, identity, name) => {
+    setBusy(b => ({ ...b, [`${identity}:${type}`]: true }));
     try {
       await api.post(`/live-sessions/${sessionId}/${type}/${encodeURIComponent(identity)}`);
-      toast(`${type === "mute" ? "Muted" : "Removed"} successfully`, "success");
+      const labels = { mute: "Muted", "disable-video": "Camera disabled", kick: "Kicked & banned" };
+      toast(`${labels[type] || "Done"}: ${name}`, "success");
     } catch (e) {
       toast(e.response?.data?.error || `${type} failed`, "error");
     } finally {
-      setBusy(b => ({ ...b, [identity]: null }));
+      setBusy(b => ({ ...b, [`${identity}:${type}`]: false }));
     }
   };
+
+  const btnStyle = (color) => ({
+    height: 26, borderRadius: 6, cursor: "pointer",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    fontSize: "0.68rem", fontWeight: 600, padding: "0 0.5rem",
+    border: `1px solid ${color}40`,
+    background: `${color}12`,
+    color,
+    transition: "all 0.15s",
+    whiteSpace: "nowrap",
+  });
 
   return (
     <div style={{
       position: "fixed", top: 12, right: 12, zIndex: 99998,
       background: "rgba(8,8,20,0.97)", backdropFilter: "blur(20px)",
       border: "1px solid rgba(124,111,255,0.2)", borderRadius: 14,
-      width: collapsed ? "auto" : 250, boxShadow: "0 8px 40px rgba(0,0,0,0.8)",
+      width: collapsed ? "auto" : 280, boxShadow: "0 8px 40px rgba(0,0,0,0.8)",
       overflow: "hidden", transition: "width 0.2s ease",
     }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.6rem 0.85rem", borderBottom: collapsed ? "none" : "1px solid rgba(255,255,255,0.05)", cursor: "pointer", userSelect: "none" }}
@@ -250,39 +264,73 @@ function ParticipantsPanel({ sessionId }) {
         </div>
       </div>
       {!collapsed && (
-        <div style={{ maxHeight: "45vh", overflowY: "auto" }}>
-          {participants.map(p => (
-            <div key={p.identity} style={{ display: "flex", alignItems: "center", padding: "0.45rem 0.85rem", gap: "0.5rem", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
-              <div style={{ width: 28, height: 28, borderRadius: "50%", background: "linear-gradient(135deg,#7c6fff,#4f46e5)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.72rem", fontWeight: 700, color: "#fff", flexShrink: 0 }}>
-                {(p.name || p.identity)[0]?.toUpperCase()}
+        <div style={{ maxHeight: "50vh", overflowY: "auto" }}>
+          {participants.length === 0 && (
+            <div style={{ textAlign: "center", color: "#55557a", fontSize: "0.75rem", padding: "1rem" }}>No participants yet</div>
+          )}
+          {participants.map(p => {
+            const displayName = p.name || p.identity;
+            const isBusy = (type) => busy[`${p.identity}:${type}`];
+            return (
+              <div key={p.identity} style={{ padding: "0.5rem 0.85rem", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                {/* Name row */}
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.4rem" }}>
+                  <div style={{ width: 28, height: 28, borderRadius: "50%", background: "linear-gradient(135deg,#7c6fff,#4f46e5)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.72rem", fontWeight: 700, color: "#fff", flexShrink: 0 }}>
+                    {displayName[0]?.toUpperCase()}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "#e2e8f0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {displayName}
+                      {p.isLocal && <span style={{ color: "#7c6fff", fontSize: "0.6rem", marginLeft: 4 }}>(you)</span>}
+                    </div>
+                    <div style={{ display: "flex", gap: "0.25rem", marginTop: "0.15rem" }}>
+                      <span style={{ fontSize: "0.58rem", padding: "0.08rem 0.28rem", borderRadius: 4, background: p.isMicrophoneEnabled ? "rgba(74,222,128,0.12)" : "rgba(248,113,113,0.12)", color: p.isMicrophoneEnabled ? "#4ade80" : "#f87171" }}>
+                        {p.isMicrophoneEnabled ? "🎤 On" : "🔇 Off"}
+                      </span>
+                      <span style={{ fontSize: "0.58rem", padding: "0.08rem 0.28rem", borderRadius: 4, background: p.isCameraEnabled ? "rgba(74,222,128,0.12)" : "rgba(248,113,113,0.12)", color: p.isCameraEnabled ? "#4ade80" : "#f87171" }}>
+                        {p.isCameraEnabled ? "📹 On" : "🚫 Off"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action buttons — only for other participants */}
+                {!p.isLocal && (
+                  <div style={{ display: "flex", gap: "0.3rem", flexWrap: "wrap" }}>
+                    {/* Mute mic */}
+                    <button
+                      style={btnStyle("#fbbf24")}
+                      disabled={isBusy("mute")}
+                      onClick={() => action("mute", p.identity, displayName)}
+                      title="Mute microphone"
+                    >
+                      {isBusy("mute") ? "…" : "🔇 Mute"}
+                    </button>
+
+                    {/* Disable camera */}
+                    <button
+                      style={btnStyle("#60a5fa")}
+                      disabled={isBusy("disable-video")}
+                      onClick={() => action("disable-video", p.identity, displayName)}
+                      title="Turn off camera"
+                    >
+                      {isBusy("disable-video") ? "…" : "🚫 Cam"}
+                    </button>
+
+                    {/* Kick + ban */}
+                    <button
+                      style={btnStyle("#f87171")}
+                      disabled={isBusy("kick")}
+                      onClick={() => action("kick", p.identity, displayName)}
+                      title="Kick and ban from rejoining"
+                    >
+                      {isBusy("kick") ? "…" : "⛔ Kick"}
+                    </button>
+                  </div>
+                )}
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "#e2e8f0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {p.name || p.identity}{p.isLocal && <span style={{ color: "#7c6fff", fontSize: "0.6rem", marginLeft: 4 }}>(you)</span>}
-                </div>
-                <div style={{ display: "flex", gap: "0.25rem", marginTop: "0.15rem" }}>
-                  <span style={{ fontSize: "0.58rem", padding: "0.08rem 0.28rem", borderRadius: 4, background: p.isMicrophoneEnabled ? "rgba(74,222,128,0.12)" : "rgba(248,113,113,0.12)", color: p.isMicrophoneEnabled ? "#4ade80" : "#f87171" }}>
-                    {p.isMicrophoneEnabled ? "🎤" : "🔇"}
-                  </span>
-                  <span style={{ fontSize: "0.58rem", padding: "0.08rem 0.28rem", borderRadius: 4, background: p.isCameraEnabled ? "rgba(74,222,128,0.12)" : "rgba(248,113,113,0.12)", color: p.isCameraEnabled ? "#4ade80" : "#f87171" }}>
-                    {p.isCameraEnabled ? "📹" : "🚫"}
-                  </span>
-                </div>
-              </div>
-              {!p.isLocal && (
-                <div style={{ display: "flex", gap: "0.2rem", flexShrink: 0 }}>
-                  <button onClick={() => action("mute", p.identity)} disabled={!!busy[p.identity]} title="Mute"
-                    style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid rgba(251,191,36,0.3)", background: "rgba(251,191,36,0.08)", color: "#fbbf24", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.7rem", opacity: busy[p.identity] ? 0.5 : 1 }}>
-                    {busy[p.identity] === "mute" ? "…" : "🔇"}
-                  </button>
-                  <button onClick={() => action("remove", p.identity)} disabled={!!busy[p.identity]} title="Remove"
-                    style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid rgba(248,113,113,0.3)", background: "rgba(248,113,113,0.08)", color: "#f87171", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.7rem", opacity: busy[p.identity] ? 0.5 : 1 }}>
-                    {busy[p.identity] === "remove" ? "…" : "✕"}
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -328,13 +376,39 @@ function VideoGrid() {
 function InnerRoom({ sessionId, userRole, onLeave, session }) {
   const [chatOpen,    setChatOpen]    = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [kicked,      setKicked]      = useState(false);
+  const { token } = useAuth();
+
+  // Listen for kicked event
+  useEffect(() => {
+    if (!token) return;
+    const socket = getSharedSocket(token);
+    const onKicked = ({ sessionId: sid, identity }) => {
+      // Only trigger if this is for our session (server broadcasts to all)
+      if (sid?.toString() === sessionId?.toString()) {
+        setKicked(true);
+        setTimeout(onLeave, 3000);
+      }
+    };
+    socket.on("session:kicked", onKicked);
+    return () => socket.off("session:kicked", onKicked);
+  }, [token, sessionId]);
 
   const handleUnread = () => setUnreadCount(c => c + 1);
+  const handleChatToggle = () => { setChatOpen(v => !v); if (!chatOpen) setUnreadCount(0); };
 
-  const handleChatToggle = () => {
-    setChatOpen(v => !v);
-    if (!chatOpen) setUnreadCount(0);
-  };
+  if (kicked) {
+    return (
+      <div style={{ position: "fixed", inset: 0, zIndex: 99999, background: "#07071a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1rem" }}>
+        <div style={{ fontSize: "3rem" }}>⛔</div>
+        <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "#f87171" }}>You've been removed</div>
+        <div style={{ fontSize: "0.85rem", color: "#55557a", textAlign: "center", maxWidth: 300 }}>
+          You were removed from this session by the host. You'll need permission to rejoin.
+        </div>
+        <div style={{ fontSize: "0.75rem", color: "#55557a" }}>Leaving in 3 seconds…</div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 400, background: "#07071a", display: "flex", flexDirection: "column" }}>
@@ -342,65 +416,35 @@ function InnerRoom({ sessionId, userRole, onLeave, session }) {
       <SessionInfoBar session={session} />
       {(userRole === "admin" || userRole === "trainer") && <ParticipantsPanel sessionId={sessionId} />}
 
-      {/* Video grid — always full width, chat floats on top */}
       <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 76 }}>
         <VideoGrid />
       </div>
 
-      {/* Chat panel — floating overlay, bottom-right, above video */}
       {chatOpen && (
         <div style={{
-          position: "fixed",
-          bottom: 84, right: 12,
-          width: 320, height: 460,
-          zIndex: 99997,
-          background: "rgba(8,8,20,0.97)",
-          backdropFilter: "blur(20px)",
-          border: "1px solid rgba(124,111,255,0.2)",
-          borderRadius: 16,
+          position: "fixed", bottom: 84, right: 12,
+          width: 320, height: 460, zIndex: 99997,
+          background: "rgba(8,8,20,0.97)", backdropFilter: "blur(20px)",
+          border: "1px solid rgba(124,111,255,0.2)", borderRadius: 16,
           boxShadow: "0 -8px 40px rgba(0,0,0,0.7)",
-          display: "flex", flexDirection: "column",
-          overflow: "hidden",
+          display: "flex", flexDirection: "column", overflow: "hidden",
           animation: "slideUpIn 0.2s ease",
         }}>
-          {/* Compact header */}
-          <div style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "0.6rem 0.85rem",
-            borderBottom: "1px solid rgba(255,255,255,0.06)",
-            flexShrink: 0,
-          }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.6rem 0.85rem", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <span style={{ fontSize: "0.85rem" }}>🗣️</span>
-              <span style={{ fontWeight: 700, fontSize: "0.82rem", color: "#e2e8f0" }}>Group Chat</span>
+              <span>🗣️</span>
+              <span style={{ fontWeight: 700, fontSize: "0.82rem", color: "#e2e8f0" }}>Session Chat</span>
               <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#4ade80" }} />
             </div>
-            <button
-              onClick={() => setChatOpen(false)}
-              style={{
-                background: "none", border: "none", color: "#55557a",
-                cursor: "pointer", fontSize: "1rem", lineHeight: 1,
-                padding: "0.2rem",
-              }}
-            >✕</button>
+            <button onClick={() => setChatOpen(false)} style={{ background: "none", border: "none", color: "#55557a", cursor: "pointer", fontSize: "1rem" }}>✕</button>
           </div>
-
-          {/* LiveChat — session-specific, isolated from group chat */}
           <div className="live-room-chat" style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-            <LiveChat
-              sessionId={sessionId}
-              onUnread={handleUnread}
-            />
+            <LiveChat sessionId={sessionId} onUnread={handleUnread} />
           </div>
         </div>
       )}
 
-      <CustomControls
-        onLeave={onLeave}
-        chatOpen={chatOpen}
-        onChatToggle={handleChatToggle}
-        unreadCount={unreadCount}
-      />
+      <CustomControls onLeave={onLeave} chatOpen={chatOpen} onChatToggle={handleChatToggle} unreadCount={unreadCount} />
     </div>
   );
 }
@@ -432,8 +476,13 @@ export default function LiveRoom({ sessionId, userRole, onLeave }) {
 
   if (error) return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh", gap: "1rem", background: "#07071a" }}>
-      <div style={{ fontSize: "2rem" }}>❌</div>
-      <div style={{ color: "#f87171", fontWeight: 600 }}>{error}</div>
+      <div style={{ fontSize: "2rem" }}>{error.includes("removed") || error.includes("banned") ? "⛔" : "❌"}</div>
+      <div style={{ color: "#f87171", fontWeight: 600, textAlign: "center", maxWidth: 320, padding: "0 1rem" }}>{error}</div>
+      {(error.includes("removed") || error.includes("banned")) && (
+        <div style={{ fontSize: "0.8rem", color: "#55557a", textAlign: "center", maxWidth: 280 }}>
+          Contact the session host to get permission to rejoin.
+        </div>
+      )}
       <button onClick={onLeave} style={{ background: "rgba(124,111,255,0.15)", border: "1px solid rgba(124,111,255,0.3)", color: "#a78bfa", borderRadius: 10, padding: "0.6rem 1.25rem", cursor: "pointer", fontWeight: 600 }}>← Back</button>
     </div>
   );
