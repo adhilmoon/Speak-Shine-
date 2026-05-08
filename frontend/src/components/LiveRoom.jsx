@@ -328,16 +328,12 @@ function InnerRoom({ sessionId, userRole, onLeave, session }) {
   const [chatOpen,    setChatOpen]    = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  const handleUnread = () => {
-    setUnreadCount(c => c + 1);
-  };
+  const handleUnread = () => setUnreadCount(c => c + 1);
 
   const handleChatToggle = () => {
     setChatOpen(v => !v);
-    if (!chatOpen) setUnreadCount(0); // clear badge when opening
+    if (!chatOpen) setUnreadCount(0);
   };
-
-  const CHAT_WIDTH = 340;
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 400, background: "#07071a", display: "flex", flexDirection: "column" }}>
@@ -345,37 +341,59 @@ function InnerRoom({ sessionId, userRole, onLeave, session }) {
       <SessionInfoBar session={session} />
       {(userRole === "admin" || userRole === "trainer") && <ParticipantsPanel sessionId={sessionId} />}
 
-      {/* Video grid — shrinks when chat is open */}
-      <div style={{
-        position: "absolute",
-        top: 0, left: 0,
-        right: chatOpen ? CHAT_WIDTH : 0,
-        bottom: 76,
-        transition: "right 0.25s ease",
-      }}>
+      {/* Video grid — always full width, chat floats on top */}
+      <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 76 }}>
         <VideoGrid />
       </div>
 
-      {/* Chat panel — slides in from right */}
-      <div style={{
-        position: "fixed",
-        top: 0, right: 0, bottom: 76,
-        width: CHAT_WIDTH,
-        zIndex: 99997,
-        transform: chatOpen ? "translateX(0)" : "translateX(100%)",
-        transition: "transform 0.25s ease",
-        background: "rgba(8,8,20,0.98)",
-        backdropFilter: "blur(20px)",
-        borderLeft: "1px solid rgba(255,255,255,0.07)",
-        display: "flex", flexDirection: "column",
-      }}>
-        <div className="live-room-chat" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <GroupChat
-            onClose={() => setChatOpen(false)}
-            onUnread={handleUnread}
-          />
+      {/* Chat panel — floating overlay, bottom-right, above video */}
+      {chatOpen && (
+        <div style={{
+          position: "fixed",
+          bottom: 84, right: 12,
+          width: 320, height: 460,
+          zIndex: 99997,
+          background: "rgba(8,8,20,0.97)",
+          backdropFilter: "blur(20px)",
+          border: "1px solid rgba(124,111,255,0.2)",
+          borderRadius: 16,
+          boxShadow: "0 -8px 40px rgba(0,0,0,0.7)",
+          display: "flex", flexDirection: "column",
+          overflow: "hidden",
+          animation: "slideUpIn 0.2s ease",
+        }}>
+          {/* Compact header */}
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "0.6rem 0.85rem",
+            borderBottom: "1px solid rgba(255,255,255,0.06)",
+            flexShrink: 0,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <span style={{ fontSize: "0.85rem" }}>🗣️</span>
+              <span style={{ fontWeight: 700, fontSize: "0.82rem", color: "#e2e8f0" }}>Group Chat</span>
+              <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#4ade80" }} />
+            </div>
+            <button
+              onClick={() => setChatOpen(false)}
+              style={{
+                background: "none", border: "none", color: "#55557a",
+                cursor: "pointer", fontSize: "1rem", lineHeight: 1,
+                padding: "0.2rem",
+              }}
+            >✕</button>
+          </div>
+
+          {/* GroupChat without its own header */}
+          <div className="live-room-chat" style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+            <GroupChat
+              onClose={() => setChatOpen(false)}
+              onUnread={handleUnread}
+              hideHeader
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       <CustomControls
         onLeave={onLeave}
