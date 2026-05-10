@@ -15,6 +15,7 @@ import {
   useTracks,
   useMediaDeviceSelect,
   useParticipantContext,
+  useTrackToggle,
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import "@livekit/components-styles";
@@ -62,14 +63,15 @@ function DevicePicker({ kind, onClose }) {
 }
 
 // ── Single control button (icon + label, no dual icons) ───────────────────────
-function CtrlBtn({ icon, label, active = true, muted = false, danger = false, onClick, style: extraStyle }) {
+function CtrlBtn({ icon, label, active = true, muted = false, danger = false, pending = false, onClick, style: extraStyle }) {
   return (
     <button
       onClick={onClick}
+      disabled={pending}
       style={{
         display: "flex", flexDirection: "column", alignItems: "center",
-        justifyContent: "center", gap: "0.22rem",
-        padding: "0.5rem 0.85rem", borderRadius: 14,
+        justifyContent: "center", gap: "0.25rem",
+        padding: "0.5rem 0.9rem", borderRadius: 16,
         border: danger
           ? "none"
           : muted
@@ -85,13 +87,17 @@ function CtrlBtn({ icon, label, active = true, muted = false, danger = false, on
               ? "rgba(255,255,255,0.07)"
               : "rgba(124,111,255,0.18)",
         color: danger ? "#fff" : muted ? "#f87171" : active ? "#e2e8f0" : "#a78bfa",
-        cursor: "pointer", minWidth: 58,
-        transition: "all 0.15s",
+        cursor: pending ? "wait" : "pointer", minWidth: 64,
+        opacity: pending ? 0.6 : 1,
+        transition: "all 0.2s cubic-bezier(0.34,1.56,0.64,1)",
+        boxShadow: active && !danger && !muted ? "0 4px 12px rgba(0,0,0,0.3)" : "none",
         ...extraStyle,
       }}
+      onMouseEnter={e => { if(!pending && !danger) e.currentTarget.style.transform = "translateY(-2px)"; }}
+      onMouseLeave={e => { if(!pending && !danger) e.currentTarget.style.transform = "none"; }}
     >
-      <span style={{ fontSize: "1.3rem", lineHeight: 1, display: "block" }}>{icon}</span>
-      <span style={{ fontSize: "0.6rem", fontWeight: 700, letterSpacing: "0.03em", lineHeight: 1 }}>{label}</span>
+      <span style={{ fontSize: "1.35rem", lineHeight: 1, display: "block", filter: pending ? "grayscale(1)" : "none", animation: pending ? "badgePulse 1s infinite" : "none" }}>{icon}</span>
+      <span style={{ fontSize: "0.62rem", fontWeight: 700, letterSpacing: "0.04em", lineHeight: 1 }}>{pending ? "..." : label}</span>
     </button>
   );
 }
@@ -185,14 +191,14 @@ function HandRaiseQueue({ raisedHands, onDismiss }) {
 
 // ── Custom Control Bar ────────────────────────────────────────────────────────
 function CustomControls({ onLeave, chatOpen, onChatToggle, unreadCount, ncOn, onNcToggle, ncLoading, handRaised, onHandToggle, onReaction }) {
-  const { localParticipant, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant();
-  const [shareOn,  setShareOn]  = useState(false);
-  const [picker,   setPicker]   = useState(null);
+  const { localParticipant } = useLocalParticipant();
+  const [picker, setPicker]  = useState(null);
   const barRef = useRef(null);
 
-  // Derive truth from LiveKit track state, not local booleans
-  const micOn = isMicrophoneEnabled;
-  const camOn = isCameraEnabled;
+  // Use robust LiveKit track toggles to manage permissions, errors, and pending states automatically
+  const { toggle: toggleMic, enabled: micOn, pending: micPending } = useTrackToggle({ source: Track.Source.Microphone });
+  const { toggle: toggleCam, enabled: camOn, pending: camPending } = useTrackToggle({ source: Track.Source.Camera });
+  const { toggle: toggleShare, enabled: shareOn, pending: sharePending } = useTrackToggle({ source: Track.Source.ScreenShare });
 
   useEffect(() => {
     const handler = (e) => { if (barRef.current && !barRef.current.contains(e.target)) setPicker(null); };
@@ -200,20 +206,8 @@ function CustomControls({ onLeave, chatOpen, onChatToggle, unreadCount, ncOn, on
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const toggleMic = async () => {
-    try { await localParticipant.setMicrophoneEnabled(!micOn); }
-    catch (e) { console.error("Mic:", e); }
-  };
-  const toggleCam = async () => {
-    try { await localParticipant.setCameraEnabled(!camOn); }
-    catch (e) { console.error("Cam:", e); }
-  };
-  const toggleShare = async () => {
-    try { await localParticipant.setScreenShareEnabled(!shareOn); setShareOn(v => !v); }
-    catch (e) { console.error("Share:", e); }
-  };
   const handleLeave = () => {
-    localParticipant.room?.disconnect();
+    localParticipant?.room?.disconnect();
     onLeave();
   };
 
@@ -245,8 +239,9 @@ function CustomControls({ onLeave, chatOpen, onChatToggle, unreadCount, ncOn, on
           icon={micOn ? "🎤" : "🔇"}
           label={micOn ? "Mute" : "Unmute"}
           active={micOn} muted={!micOn}
-          onClick={toggleMic}
-          style={{ borderRadius: "14px 0 0 14px" }}
+          pending={micPending}
+          onClick={() => toggleMic()}
+          style={{ borderRadius: "16px 0 0 16px" }}
         />
         <button style={chevronStyle(!micOn)} onClick={() => setPicker(p => p === "audioinput" ? null : "audioinput")}>▲</button>
         {picker === "audioinput" && <DevicePicker kind="audioinput" onClose={() => setPicker(null)} />}
@@ -258,8 +253,9 @@ function CustomControls({ onLeave, chatOpen, onChatToggle, unreadCount, ncOn, on
           icon={camOn ? "📹" : "🚫"}
           label={camOn ? "Camera" : "No Cam"}
           active={camOn} muted={!camOn}
-          onClick={toggleCam}
-          style={{ borderRadius: "14px 0 0 14px" }}
+          pending={camPending}
+          onClick={() => toggleCam()}
+          style={{ borderRadius: "16px 0 0 16px" }}
         />
         <button style={chevronStyle(!camOn)} onClick={() => setPicker(p => p === "videoinput" ? null : "videoinput")}>▲</button>
         {picker === "videoinput" && <DevicePicker kind="videoinput" onClose={() => setPicker(null)} />}
@@ -270,7 +266,8 @@ function CustomControls({ onLeave, chatOpen, onChatToggle, unreadCount, ncOn, on
         icon="🖥️"
         label={shareOn ? "Sharing" : "Share"}
         active={!shareOn}
-        onClick={toggleShare}
+        pending={sharePending}
+        onClick={() => toggleShare()}
         style={shareOn ? { border: "1px solid rgba(124,111,255,0.5)", background: "rgba(124,111,255,0.2)", color: "#a78bfa" } : {}}
       />
 
