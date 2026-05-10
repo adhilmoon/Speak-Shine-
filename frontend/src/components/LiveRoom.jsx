@@ -27,20 +27,28 @@ import { useNoiseCancellation } from "../hooks/useNoiseCancellation.js";
 
 // ── Device Picker Popup ───────────────────────────────────────────────────────
 function DevicePicker({ kind, onClose }) {
-  const { devices, activeDeviceId, setActiveMediaDevice } = useMediaDeviceSelect({ kind });
+  const { devices, activeDeviceId, setActiveMediaDevice } = useMediaDeviceSelect({ kind, requestPermissions: true });
   return (
     <div style={{
-      position: "absolute", bottom: "calc(100% + 8px)", left: "50%",
+      position: "absolute", bottom: "calc(100% + 12px)", left: "50%",
       transform: "translateX(-50%)",
       background: "rgba(10,10,26,0.98)", backdropFilter: "blur(20px)",
       border: "1px solid rgba(124,111,255,0.25)", borderRadius: 12,
       padding: "0.5rem", minWidth: 220, zIndex: 100000,
       boxShadow: "0 -8px 32px rgba(0,0,0,0.7)",
     }}>
-      <div style={{ fontSize: "0.62rem", fontWeight: 700, color: "#a78bfa", textTransform: "uppercase", letterSpacing: "0.08em", padding: "0.3rem 0.5rem 0.5rem" }}>
-        {kind === "audioinput" ? "🎤 Microphone" : "📹 Camera"}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.4rem" }}>
+        <div style={{ fontSize: "0.62rem", fontWeight: 700, color: "#a78bfa", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+          {kind === "audioinput" ? "🎤 Microphone" : "📹 Camera"}
+        </div>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: "#a78bfa", cursor: "pointer", fontSize: "0.9rem", padding: "0 0.2rem" }}>✕</button>
       </div>
-      {devices.map(d => (
+      {(!devices || devices.length === 0) && (
+        <div style={{ padding: "0.5rem", color: "#94a3b8", fontSize: "0.75rem", textAlign: "center" }}>
+          No devices found.
+        </div>
+      )}
+      {devices?.map(d => (
         <button key={d.deviceId} onClick={() => { setActiveMediaDevice(d.deviceId); onClose(); }}
           style={{
             display: "flex", alignItems: "center", gap: "0.5rem",
@@ -211,11 +219,11 @@ function CustomControls({ onLeave, chatOpen, onChatToggle, unreadCount, ncOn, on
 
   const chevronStyle = (muted) => ({
     display: "flex", alignItems: "center", justifyContent: "center",
-    padding: "0 0.35rem", borderRadius: "0 10px 10px 0",
+    padding: "0 0.55rem", borderRadius: "0 16px 16px 0",
     border: muted ? "1px solid rgba(248,113,113,0.3)" : "1px solid rgba(255,255,255,0.1)",
     borderLeft: "1px solid rgba(255,255,255,0.05)",
     background: muted ? "rgba(248,113,113,0.07)" : "rgba(255,255,255,0.04)",
-    color: "#55557a", cursor: "pointer", fontSize: "0.5rem",
+    color: "#55557a", cursor: "pointer", fontSize: "0.55rem",
     alignSelf: "stretch",
     transition: "all 0.15s",
   });
@@ -241,7 +249,7 @@ function CustomControls({ onLeave, chatOpen, onChatToggle, unreadCount, ncOn, on
           onClick={() => toggleMic()}
           style={{ borderRadius: "16px 0 0 16px" }}
         />
-        <button style={chevronStyle(!micOn)} onClick={() => setPicker(p => p === "audioinput" ? null : "audioinput")}>▲</button>
+        <button style={chevronStyle(!micOn)} onClick={(e) => { e.stopPropagation(); setPicker(p => p === "audioinput" ? null : "audioinput"); }}>▲</button>
         {picker === "audioinput" && <DevicePicker kind="audioinput" onClose={() => setPicker(null)} />}
       </div>
 
@@ -255,7 +263,7 @@ function CustomControls({ onLeave, chatOpen, onChatToggle, unreadCount, ncOn, on
           onClick={() => toggleCam()}
           style={{ borderRadius: "16px 0 0 16px" }}
         />
-        <button style={chevronStyle(!camOn)} onClick={() => setPicker(p => p === "videoinput" ? null : "videoinput")}>▲</button>
+        <button style={chevronStyle(!camOn)} onClick={(e) => { e.stopPropagation(); setPicker(p => p === "videoinput" ? null : "videoinput"); }}>▲</button>
         {picker === "videoinput" && <DevicePicker kind="videoinput" onClose={() => setPicker(null)} />}
       </div>
 
