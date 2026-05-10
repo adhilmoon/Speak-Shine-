@@ -41,7 +41,7 @@ function DevicePicker({ kind, onClose }) {
         <div style={{ fontSize: "0.62rem", fontWeight: 700, color: "#a78bfa", textTransform: "uppercase", letterSpacing: "0.08em" }}>
           {kind === "audioinput" ? "🎤 Microphone" : "📹 Camera"}
         </div>
-        <button onClick={onClose} style={{ background: "none", border: "none", color: "#a78bfa", cursor: "pointer", fontSize: "0.9rem", padding: "0 0.2rem" }}>✕</button>
+        <button type="button" onClick={onClose} style={{ background: "none", border: "none", color: "#a78bfa", cursor: "pointer", fontSize: "0.9rem", padding: "0 0.2rem" }}>✕</button>
       </div>
       {(!devices || devices.length === 0) && (
         <div style={{ padding: "0.5rem", color: "#94a3b8", fontSize: "0.75rem", textAlign: "center" }}>
@@ -49,7 +49,7 @@ function DevicePicker({ kind, onClose }) {
         </div>
       )}
       {devices?.map(d => (
-        <button key={d.deviceId} onClick={() => { setActiveMediaDevice(d.deviceId); onClose(); }}
+        <button type="button" key={d.deviceId} onClick={() => { setActiveMediaDevice(d.deviceId); onClose(); }}
           style={{
             display: "flex", alignItems: "center", gap: "0.5rem",
             width: "100%", padding: "0.5rem 0.6rem", borderRadius: 8,
@@ -72,6 +72,7 @@ function DevicePicker({ kind, onClose }) {
 function CtrlBtn({ icon, label, active = true, muted = false, danger = false, pending = false, onClick, style: extraStyle }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={pending}
       style={{
@@ -149,7 +150,7 @@ function EmojiPickerBar({ onPick, onClose }) {
       animation:"slideUpIn 0.15s ease",
     }}>
       {EMOJI_LIST.map(e => (
-        <button key={e} onClick={() => { onPick(e); onClose(); }} style={{
+        <button type="button" key={e} onClick={() => { onPick(e); onClose(); }} style={{
           background:"none", border:"none", fontSize:"1.6rem",
           cursor:"pointer", borderRadius:8, padding:"0.3rem",
           transition:"transform 0.12s, background 0.12s",
@@ -184,7 +185,7 @@ function HandRaiseQueue({ raisedHands, onDismiss }) {
           <span style={{ fontSize:"1.1rem" }}>✋</span>
           <span style={{ fontSize:"0.78rem", fontWeight:700, color:"#fde68a" }}>{h.fromName}</span>
           <span style={{ fontSize:"0.68rem", color:"#92400e" }}>raised hand</span>
-          <button onClick={() => onDismiss(h.from)} style={{
+          <button type="button" onClick={() => onDismiss(h.from)} style={{
             background:"rgba(251,191,36,0.2)", border:"1px solid rgba(251,191,36,0.3)",
             color:"#fbbf24", borderRadius:6, cursor:"pointer",
             fontSize:"0.62rem", fontWeight:700, padding:"0.1rem 0.4rem",
@@ -249,7 +250,7 @@ function CustomControls({ onLeave, chatOpen, onChatToggle, unreadCount, ncOn, on
           onClick={() => toggleMic()}
           style={{ borderRadius: "16px 0 0 16px" }}
         />
-        <button style={chevronStyle(!micOn)} onClick={(e) => { e.stopPropagation(); setPicker(p => p === "audioinput" ? null : "audioinput"); }}>▲</button>
+        <button type="button" style={chevronStyle(!micOn)} onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPicker(p => p === "audioinput" ? null : "audioinput"); }}>▲</button>
         {picker === "audioinput" && <DevicePicker kind="audioinput" onClose={() => setPicker(null)} />}
       </div>
 
@@ -263,7 +264,7 @@ function CustomControls({ onLeave, chatOpen, onChatToggle, unreadCount, ncOn, on
           onClick={() => toggleCam()}
           style={{ borderRadius: "16px 0 0 16px" }}
         />
-        <button style={chevronStyle(!camOn)} onClick={(e) => { e.stopPropagation(); setPicker(p => p === "videoinput" ? null : "videoinput"); }}>▲</button>
+        <button type="button" style={chevronStyle(!camOn)} onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPicker(p => p === "videoinput" ? null : "videoinput"); }}>▲</button>
         {picker === "videoinput" && <DevicePicker kind="videoinput" onClose={() => setPicker(null)} />}
       </div>
 
