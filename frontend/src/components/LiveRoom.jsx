@@ -26,7 +26,7 @@ import { getSharedSocket } from "../hooks/useSocket.js";
 import { useNoiseCancellation } from "../hooks/useNoiseCancellation.js";
 
 // ── Device Picker Popup ───────────────────────────────────────────────────────
-function DevicePicker({ kind, onClose }) {
+function DevicePicker({ kind, onClose, onSelectDevice }) {
   const { devices, activeDeviceId, setActiveMediaDevice } = useMediaDeviceSelect({ kind, requestPermissions: true });
   return (
     <div style={{
@@ -56,6 +56,7 @@ function DevicePicker({ kind, onClose }) {
           } catch(err) {
             console.error("Device swap failed:", err);
           }
+          if (onSelectDevice) onSelectDevice(d.deviceId);
           onClose(); 
         }}
           style={{
@@ -259,7 +260,7 @@ function CustomControls({ onLeave, chatOpen, onChatToggle, unreadCount, ncOn, on
           style={{ borderRadius: "16px 0 0 16px" }}
         />
         <button type="button" style={chevronStyle(!micOn)} onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPicker(p => p === "audioinput" ? null : "audioinput"); }}>▲</button>
-        {picker === "audioinput" && <DevicePicker kind="audioinput" onClose={() => setPicker(null)} />}
+        {picker === "audioinput" && <DevicePicker kind="audioinput" onClose={() => setPicker(null)} onSelectDevice={async () => { if (!micOn) { try { await toggleMic(); } catch(e){} } }} />}
       </div>
 
       {/* Camera + device picker */}
@@ -273,7 +274,7 @@ function CustomControls({ onLeave, chatOpen, onChatToggle, unreadCount, ncOn, on
           style={{ borderRadius: "16px 0 0 16px" }}
         />
         <button type="button" style={chevronStyle(!camOn)} onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPicker(p => p === "videoinput" ? null : "videoinput"); }}>▲</button>
-        {picker === "videoinput" && <DevicePicker kind="videoinput" onClose={() => setPicker(null)} />}
+        {picker === "videoinput" && <DevicePicker kind="videoinput" onClose={() => setPicker(null)} onSelectDevice={async () => { if (!camOn) { try { await toggleCam(); } catch(e){} } }} />}
       </div>
 
       {/* Screen share */}
