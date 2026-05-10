@@ -16,27 +16,11 @@ export default function LiveSession() {
   const [hasJoined, setHasJoined] = useState(false);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await api.get(`/live-sessions/${id}`);
-        setSession(res.data);
-        if (res.data.status !== "live") {
-          setError("Session is not live");
-        } else {
-          const userPhone = user?.phone;
-          const alreadyIn = userPhone && res.data.participants?.includes(userPhone);
-          if (alreadyIn) {
-            // Already a participant — skip the lobby and go straight in
-            setHasJoined(true);
-            setInRoom(true);
-          }
-        }
-      } catch (e) {
-        setError(e.response?.data?.error || "Failed to load session");
-      } finally {
-        setLoading(false);
-      }
-    })();
+    // Bypass fetch for local testing
+    setSession({ id: id, title: "Test Session", status: "live", participants: [] });
+    setHasJoined(true);
+    setInRoom(true);
+    setLoading(false);
   }, [id, user?.phone]);
 
   const handleJoin = () => {
