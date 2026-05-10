@@ -79,7 +79,7 @@ function DevicePicker({ kind, onClose, onSelectDevice }) {
 }
 
 // ── Single control button ────────────────────────────────────────────────────────────
-function CtrlBtn({ icon, label, active = true, muted = false, danger = false, pending = false, onClick, style: extraStyle }) {
+function CtrlBtn({ icon, label, active = true, muted = false, danger = false, pending = false, onClick, style: extraStyle, iconBoxStyle }) {
   return (
     <button
       type="button"
@@ -100,6 +100,7 @@ function CtrlBtn({ icon, label, active = true, muted = false, danger = false, pe
           : active ? "1px solid rgba(255,255,255,0.12)"
           : "1px solid rgba(124,111,255,0.45)",
         boxShadow: danger ? "0 4px 16px rgba(239,68,68,0.4)" : "none",
+        ...iconBoxStyle
       }}>
         <span style={{ fontSize: "1.3rem", lineHeight: 1 }}>{pending ? "⏳" : icon}</span>
       </div>
@@ -299,7 +300,7 @@ function HandRaiseQueue({ raisedHands, onDismiss, onDismissAll }) {
 }
 
 // ── Custom Control Bar ────────────────────────────────────────────────────────
-function CustomControls({ onLeave, chatOpen, onChatToggle, unreadCount, ncOn, onNcToggle, ncLoading, handRaised, onHandToggle, onReaction }) {
+function CustomControls({ userRole, onLeave, chatOpen, onChatToggle, unreadCount, ncOn, onNcToggle, ncLoading, handRaised, onHandToggle, onReaction, participantsOpen, onParticipantsToggle }) {
   const { localParticipant } = useLocalParticipant();
   const [picker, setPicker]  = useState(null);
   const barRef = useRef(null);
@@ -370,23 +371,23 @@ function CustomControls({ onLeave, chatOpen, onChatToggle, unreadCount, ncOn, on
       <div className="lr-ctrl-group">
         <CtrlBtn icon="🖥️" label={shareOn ? "Sharing" : "Share"} active={!shareOn} pending={sharePending}
           onClick={async () => { try { await toggleShare(); } catch(e) { console.error(e); } }}
-          style={shareOn ? { border: "1px solid rgba(124,111,255,0.5)", background: "rgba(124,111,255,0.2)", color: "#a78bfa" } : {}}
+          iconBoxStyle={shareOn ? { border: "1px solid rgba(124,111,255,0.5)", background: "rgba(124,111,255,0.2)", color: "#a78bfa" } : {}}
         />
         <CtrlBtn
           icon={ncLoading ? "⏳" : ncOn ? "🎤" : "🔊"}
           label={ncLoading ? "Loading…" : ncOn ? "NC On" : "NC Off"}
           active={!ncOn} onClick={onNcToggle}
-          style={ncOn ? { border: "1px solid rgba(74,222,128,0.5)", background: "rgba(74,222,128,0.12)", color: "#4ade80" } : {}}
+          iconBoxStyle={ncOn ? { border: "1px solid rgba(74,222,128,0.5)", background: "rgba(74,222,128,0.12)", color: "#4ade80" } : {}}
         />
         <CtrlBtn
           icon={handRaised ? "✋" : "🖐️"} label={handRaised ? "Lower Hand" : "Raise Hand"}
           active={!handRaised} onClick={onHandToggle}
-          style={handRaised ? { border: "1.5px solid rgba(251,191,36,0.7)", background: "rgba(251,191,36,0.18)", color: "#fde68a", boxShadow: "0 0 0 3px rgba(251,191,36,0.2)", animation: "handPulse 1.2s ease-in-out infinite" } : {}}
+          iconBoxStyle={handRaised ? { border: "1.5px solid rgba(251,191,36,0.7)", background: "rgba(251,191,36,0.18)", color: "#fde68a", boxShadow: "0 0 0 3px rgba(251,191,36,0.2)", animation: "handPulse 1.2s ease-in-out infinite" } : {}}
         />
         <div style={{ position: "relative" }}>
           <CtrlBtn icon="😀" label="React" active
             onClick={() => setPicker(p => p === "emoji" ? null : "emoji")}
-            style={picker === "emoji" ? { border: "1px solid rgba(124,111,255,0.5)", background: "rgba(124,111,255,0.2)", color: "#a78bfa" } : {}}
+            iconBoxStyle={picker === "emoji" ? { border: "1px solid rgba(124,111,255,0.5)", background: "rgba(124,111,255,0.2)", color: "#a78bfa" } : {}}
           />
           {picker === "emoji" && <EmojiPickerBar onPick={onReaction} onClose={() => setPicker(null)} />}
         </div>
@@ -395,13 +396,18 @@ function CustomControls({ onLeave, chatOpen, onChatToggle, unreadCount, ncOn, on
       {/* DIVIDER */}
       <div className="lr-ctrl-divider" />
 
-      {/* RIGHT GROUP — Chat + Leave */}
+      {/* RIGHT GROUP — Chat, People, Leave */}
       <div className="lr-ctrl-group">
+        {(userRole === "admin" || userRole === "trainer") && (
+          <CtrlBtn icon="👥" label="People" active={!participantsOpen} onClick={onParticipantsToggle}
+            iconBoxStyle={participantsOpen ? { border: "1px solid rgba(124,111,255,0.5)", background: "rgba(124,111,255,0.2)", color: "#a78bfa" } : {}}
+          />
+        )}
         <div style={{ position: "relative" }}>
           <CtrlBtn icon="💬"
             label={unreadCount > 0 && !chatOpen ? `Chat (${unreadCount > 99 ? "99+" : unreadCount})` : "Chat"}
             active={!chatOpen} onClick={onChatToggle}
-            style={chatOpen ? { border: "1px solid rgba(124,111,255,0.5)", background: "rgba(124,111,255,0.2)", color: "#a78bfa" }
+            iconBoxStyle={chatOpen ? { border: "1px solid rgba(124,111,255,0.5)", background: "rgba(124,111,255,0.2)", color: "#a78bfa" }
               : unreadCount > 0 ? { border: "1px solid rgba(239,68,68,0.5)", background: "rgba(239,68,68,0.1)", color: "#fca5a5", animation: "badgePulse 1.5s ease-in-out infinite" } : {}}
           />
           {unreadCount > 0 && !chatOpen && (
@@ -416,10 +422,9 @@ function CustomControls({ onLeave, chatOpen, onChatToggle, unreadCount, ncOn, on
 
 
 // ── Participants Panel ────────────────────────────────────────────────────────
-function ParticipantsPanel({ sessionId, onKicked }) {
+function ParticipantsPanel({ sessionId, onKicked, onClose }) {
   const participants = useParticipants();
   const [busy, setBusy]           = useState({});
-  const [collapsed, setCollapsed] = useState(false);
   const toast = useToast();
 
   const action = async (type, identity, name) => {
@@ -449,21 +454,20 @@ function ParticipantsPanel({ sessionId, onKicked }) {
   return (
     <div className="lr-participants-panel">
       {/* Header */}
-      <div className="lr-panel-header" onClick={() => setCollapsed(v => !v)}>
+      <div className="lr-panel-header">
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <span style={{ fontSize: "1rem" }}>🛡️</span>
-          {!collapsed && <span style={{ fontWeight: 700, fontSize: "0.82rem", color: "#e2e8f0" }}>Participants</span>}
+          <span style={{ fontWeight: 700, fontSize: "0.82rem", color: "#e2e8f0" }}>Participants</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
           <span className="lr-count-badge">{participants.length}</span>
-          <span style={{ color: "#55557a", fontSize: "0.7rem" }}>{collapsed ? "▶" : "◀"}</span>
+          <button type="button" onClick={onClose} className="lr-chat-close" style={{ marginLeft: "0.3rem" }}>✕</button>
         </div>
       </div>
-      {!collapsed && (
-        <div style={{ maxHeight: "50vh", overflowY: "auto" }}>
-          {participants.length === 0 && (
-            <div style={{ textAlign: "center", color: "#55557a", fontSize: "0.75rem", padding: "1rem" }}>No participants yet</div>
-          )}
+      <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+        {participants.length === 0 && (
+          <div style={{ textAlign: "center", color: "#55557a", fontSize: "0.75rem", padding: "1rem" }}>No participants yet</div>
+        )}
           {participants.map(p => {
             const displayName = p.name || p.identity;
             const isBusy = (type) => busy[`${p.identity}:${type}`];
@@ -528,7 +532,6 @@ function ParticipantsPanel({ sessionId, onKicked }) {
             );
           })}
         </div>
-      )}
     </div>
   );
 }
@@ -624,8 +627,9 @@ function VideoGrid({ raisedHands }) {
 
 // ── Inner Room ────────────────────────────────────────────────────────────────
 function InnerRoom({ sessionId, userRole, onLeave, session }) {
-  const [chatOpen,    setChatOpen]    = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [chatOpen,         setChatOpen]         = useState(false);
+  const [participantsOpen, setParticipantsOpen] = useState(true);
+  const [unreadCount,      setUnreadCount]      = useState(0);
   const [kicked,      setKicked]      = useState(false);
   const [ncOn,        setNcOn]        = useState(false);
   const [ncLoading,   setNcLoading]   = useState(false);
@@ -828,8 +832,8 @@ function InnerRoom({ sessionId, userRole, onLeave, session }) {
       <div className="lr-main">
 
         {/* Host participants panel — left sidebar */}
-        {(userRole === "admin" || userRole === "trainer") && (
-          <ParticipantsPanel sessionId={sessionId} />
+        {(userRole === "admin" || userRole === "trainer") && participantsOpen && (
+          <ParticipantsPanel sessionId={sessionId} onClose={() => setParticipantsOpen(false)} />
         )}
 
         {/* Video grid — fills remaining space */}
@@ -856,6 +860,7 @@ function InnerRoom({ sessionId, userRole, onLeave, session }) {
 
       {/* Bottom control bar */}
       <CustomControls
+        userRole={userRole}
         onLeave={onLeave}
         chatOpen={chatOpen}
         onChatToggle={handleChatToggle}
@@ -866,6 +871,8 @@ function InnerRoom({ sessionId, userRole, onLeave, session }) {
         handRaised={handRaised}
         onHandToggle={handleHandToggle}
         onReaction={handleReaction}
+        participantsOpen={participantsOpen}
+        onParticipantsToggle={() => setParticipantsOpen(v => !v)}
       />
     </div>
   );
