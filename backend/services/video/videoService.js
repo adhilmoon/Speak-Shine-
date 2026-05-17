@@ -1056,8 +1056,15 @@ export async function retryVideoAnalysis(reportId, authId) {
 
   if (report.videoUrl) {
     console.log("[RetryVideoAnalysis] Re-enqueuing video:", report.videoUrl);
-    // Pass the stored duration for retry processing
-    await downloadAndEnqueue(reportId, report.videoUrl, user.phone || user.userId || user._id, user.name || "User");
+    // Pass the stored duration and frame keys for retry processing
+    await downloadAndEnqueue(
+      reportId, 
+      report.videoUrl, 
+      user.phone || user.userId || user._id, 
+      user.name || "User",
+      null, // videoHash - not available on retry
+      report.frameKeys || null // Pass stored frame keys if available
+    );
   }
   
   return { 
