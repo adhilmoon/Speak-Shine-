@@ -35,7 +35,8 @@ export async function getTodayOverview() {
 
   const completed = users.filter(u => u.completed);
   const pending = users.filter(u => !u.completed);
-  const totalFines = users.reduce((s, u) => s + (u.fine || 0), 0);
+  // Only sum positive fines — negative values are streak reward credits, not outstanding debt
+  const totalFines = users.reduce((s, u) => s + Math.max(0, u.fine || 0), 0);
   const topStreak = [...users]
     .sort((a, b) => (b.streak || 0) - (a.streak || 0))
     .slice(0, 5)
@@ -124,7 +125,8 @@ export async function getUserProfile(phone) {
   const status = await Status.findOne().lean();
   const allUsers = await User.find().lean();
   const completed = allUsers.filter(u => u.completed).length;
-  const totalFines = allUsers.reduce((s, u) => s + (u.fine || 0), 0);
+  // Only sum positive fines — negative values are streak reward credits, not outstanding debt
+  const totalFines = allUsers.reduce((s, u) => s + Math.max(0, u.fine || 0), 0);
   const sortedByStreak = [...allUsers].sort((a, b) => (b.streak || 0) - (a.streak || 0));
   const topStreak = sortedByStreak
     .slice(0, 5)

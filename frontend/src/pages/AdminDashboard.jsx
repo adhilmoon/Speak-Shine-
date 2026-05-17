@@ -1001,10 +1001,10 @@ export default function AdminDashboard() {
       {tab==="fines" && (
         <>
           <div className="stat-grid" style={{marginBottom:"1rem"}}>
-            <StatCard icon="💸" label="Total Outstanding" value={`₹${users.reduce((s,u)=>s+(u.fine||0),0)}`} color="#f87171"/>
+            <StatCard icon="💸" label="Total Outstanding" value={`₹${users.reduce((s,u)=>s+Math.max(0,u.fine||0),0)}`} color="#f87171"/>
             <StatCard icon="⚠️" label="Users with Fines"  value={users.filter(u=>(u.fine||0)>0).length}      color="#fbbf24"/>
-            <StatCard icon="✅" label="Fine-Free Users"   value={users.filter(u=>(u.fine||0)===0).length}    color="#4ade80"/>
-            <StatCard icon="📊" label="Avg Fine"          value={`₹${users.length?Math.round(users.reduce((s,u)=>s+(u.fine||0),0)/users.length):0}`} color="#7c6fff"/>
+            <StatCard icon="✅" label="Fine-Free Users"   value={users.filter(u=>(u.fine||0)<=0).length}    color="#4ade80"/>
+            <StatCard icon="📊" label="Avg Fine"          value={`₹${(()=>{const pos=users.filter(u=>(u.fine||0)>0);return pos.length?Math.round(pos.reduce((s,u)=>s+(u.fine||0),0)/pos.length):0})()`} color="#7c6fff"/>
           </div>
           {fineBar.length>0 && (
             <div className="card" style={{marginBottom:"1rem"}}>
