@@ -5,7 +5,7 @@
 
 import os from "os";
 import VideoReport from "../../../models/videoReportSchema.js";
-import { getQueueStats } from "../../../api/videoQueue.js";
+import { getQueueStats } from "../video/videoQueue.js";
 
 // Track API response times (rolling window)
 const responseTimes = [];
