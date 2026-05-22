@@ -470,14 +470,14 @@ function CommentSection({ item, onAddComment, onDeleteComment }) {
 }
 
 // ── Protected Video Player with YouTube-style controls ────────────────────────
-function ProtectedVideoPlayer({ src, identity, watermarkUrl, fullscreenId, itemId, containerRef, onToggleFullscreen }) {
+function ProtectedVideoPlayer({ src, identity, watermarkUrl, fullscreenId, itemId, containerRef, onToggleFullscreen, knownDuration }) {
   const videoRef    = useRef(null);
   const wrapRef     = useRef(null);
   const hideTimer   = useRef(null);
   const flashTimer  = useRef(null);
   const rafRef      = useRef(null);
 
-  const [tick,      setTick]      = useState(0);   // increment to force re-render
+  const [tick,      setTick]      = useState(0);
   const [playing,   setPlaying]   = useState(false);
   const [buffering, setBuffering] = useState(true);
   const [muted,     setMuted]     = useState(false);
@@ -487,12 +487,15 @@ function ProtectedVideoPlayer({ src, identity, watermarkUrl, fullscreenId, itemI
   const [hoverTime, setHoverTime] = useState("");
   const [flash,     setFlash]     = useState(null);
 
-  // Read directly from video element — never stale
-  const v         = videoRef.current;
-  const rawDur    = v?.duration;
-  const dur       = (rawDur && isFinite(rawDur) && rawDur > 0) ? rawDur : 0;
-  const cur       = v?.currentTime || 0;
-  const pct       = dur > 0 ? (cur / dur) * 100 : 0;
+  // Read directly from video element every rAF tick
+  const v      = videoRef.current;
+  const cur    = v?.currentTime || 0;
+  // Use knownDuration from DB as fallback when browser returns Infinity
+  const rawDur = v?.duration;
+  const dur    = (rawDur && isFinite(rawDur) && rawDur > 0)
+                   ? rawDur
+                   : (knownDuration > 0 ? knownDuration : 0);
+  const pct    = dur > 0 ? Math.min(100, (cur / dur) * 100) : 0;
 
   const fmt = (s) => {
     if (!s || !isFinite(s) || s < 0) return "0:00";
@@ -523,7 +526,8 @@ function ProtectedVideoPlayer({ src, identity, watermarkUrl, fullscreenId, itemI
   const skip = (sec) => {
     const v = videoRef.current;
     if (!v) return;
-    v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + sec));
+    const d = (isFinite(v.duration) && v.duration > 0) ? v.duration : knownDuration;
+    v.currentTime = Math.max(0, Math.min(d || 0, v.currentTime + sec));
     showFlash(sec > 0 ? `+${sec}s` : `${sec}s`, sec > 0 ? "right" : "left");
     resetHide();
   };
@@ -537,9 +541,11 @@ function ProtectedVideoPlayer({ src, identity, watermarkUrl, fullscreenId, itemI
     const v = videoRef.current;
     if (!v) return;
     const p = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    // Even if duration is Infinity, try seeking — browser handles it
-    const d = isFinite(v.duration) ? v.duration : 0;
-    if (d > 0) v.currentTime = p * d;
+    // Use knownDuration as fallback when browser returns Infinity
+    const d = (isFinite(v.duration) && v.duration > 0) ? v.duration : knownDuration;
+    if (d > 0) {
+      v.currentTime = p * d;
+    }
   };
 
   // rAF loop — re-renders every animation frame while playing so bar moves smoothly
@@ -992,6 +998,7 @@ export default function CommunityFeed() {
                 <div style={{ marginBottom: "1.5rem" }}>
                   <ProtectedVideoPlayer
                     src={item.videoUrl ? item.videoUrl + "#t=0.1" : item.videoUrl}
+                    knownDuration={item.videoDuration || 0}
                     identity={identity}
                     watermarkUrl={watermarkUrl}
                     fullscreenId={fullscreenId}
