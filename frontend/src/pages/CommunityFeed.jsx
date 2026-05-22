@@ -639,11 +639,12 @@ function ProtectedVideoPlayer({ src, identity, watermarkUrl, fullscreenId, itemI
         onContextMenu={e => e.preventDefault()}
         onWaiting={() => setBuffering(true)}
         onPlaying={() => { setBuffering(false); setPlaying(true); }}
-        onCanPlay={() => setBuffering(false)}
-        onLoadedData={() => setBuffering(false)}
+        onCanPlay={() => { setBuffering(false); if (videoRef.current?.duration) setDuration(videoRef.current.duration); }}
+        onLoadedData={() => { setBuffering(false); if (videoRef.current?.duration) setDuration(videoRef.current.duration); }}
         onStalled={() => setBuffering(true)}
         onTimeUpdate={() => setCurrent(videoRef.current?.currentTime || 0)}
-        onLoadedMetadata={() => setDuration(videoRef.current?.duration || 0)}
+        onLoadedMetadata={() => { const d = videoRef.current?.duration; if (d && isFinite(d)) setDuration(d); }}
+        onDurationChange={() => { const d = videoRef.current?.duration; if (d && isFinite(d)) setDuration(d); }}
         onEnded={() => setPlaying(false)}
         muted={muted}
         style={{
@@ -780,10 +781,11 @@ function ProtectedVideoPlayer({ src, identity, watermarkUrl, fullscreenId, itemI
             ref={seekRef}
             type="range" min={0} max={1000} step={1}
             value={Math.round(pct)}
-            onMouseDown={() => setSeeking(true)}
-            onTouchStart={() => setSeeking(true)}
-            onMouseUp={() => setSeeking(false)}
-            onTouchEnd={() => setSeeking(false)}
+            onMouseDown={e => { e.stopPropagation(); setSeeking(true); }}
+            onTouchStart={e => { e.stopPropagation(); setSeeking(true); }}
+            onMouseUp={e => { e.stopPropagation(); setSeeking(false); }}
+            onTouchEnd={e => { e.stopPropagation(); setSeeking(false); }}
+            onClick={e => e.stopPropagation()}
             onChange={onSeekInput}
             style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer", margin: 0 }}
           />

@@ -65,11 +65,9 @@ function ChatLauncherConditional() {
 }
 
 export default function App() {
-  const [serverReady, setServerReady] = useState(false);
+  // null = checking, false = server sleeping, true = ready
+  const [serverReady, setServerReady] = useState(null);
 
-  // On first load, quickly probe the health endpoint.
-  // If it responds immediately (server already warm), skip the wake-up screen.
-  // If it times out / errors, show the wake-up screen until it's up.
   useEffect(() => {
     const BASE = import.meta.env.VITE_API_URL
       ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, "")
@@ -79,9 +77,18 @@ export default function App() {
       cache: "no-store",
       signal: AbortSignal.timeout(4000),
     })
-      .then(r => { if (r.ok) setServerReady(true); })
-      .catch(() => { /* server sleeping — WakeUpScreen will poll */ });
+      .then(r => { if (r.ok) setServerReady(true); else setServerReady(false); })
+      .catch(() => setServerReady(false)); // server sleeping — show WakeUpScreen
   }, []);
+
+  // Still checking (< 4s) — show nothing, avoids flash of wake-up screen
+  if (serverReady === null) {
+    return (
+      <div style={{ background: "#05050f", minHeight: "100vh" }}>
+        <div className="initial-loader" />
+      </div>
+    );
+  }
 
   if (!serverReady) {
     return <WakeUpScreen onReady={() => setServerReady(true)} />;
