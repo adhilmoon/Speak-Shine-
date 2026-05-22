@@ -726,46 +726,76 @@ function ProtectedVideoPlayer({ src, identity, watermarkUrl, fullscreenId, itemI
       >
         {/* ── Seek bar with hover tooltip ── */}
         <div
-          style={{ position: "relative", height: 18, display: "flex", alignItems: "center", marginBottom: 4 }}
+          style={{ position: "relative", height: 20, display: "flex", alignItems: "center", marginBottom: 4, cursor: "pointer" }}
+          onClick={e => {
+            e.stopPropagation();
+            const v = videoRef.current;
+            if (!v || !v.duration) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const p = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            v.currentTime = p * v.duration;
+            setCurrent(v.currentTime);
+          }}
+          onMouseDown={e => { e.stopPropagation(); setSeeking(true); }}
+          onMouseUp={e => { e.stopPropagation(); setSeeking(false); }}
+          onTouchStart={e => {
+            e.stopPropagation();
+            setSeeking(true);
+            const v = videoRef.current;
+            if (!v || !v.duration) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const touch = e.touches[0];
+            const p = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+            v.currentTime = p * v.duration;
+            setCurrent(v.currentTime);
+          }}
+          onTouchEnd={e => { e.stopPropagation(); setSeeking(false); }}
           onMouseMove={(e) => {
             const rect = e.currentTarget.getBoundingClientRect();
             const p = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
             setHoverPct(p * 100);
-            setHoverTime(fmt(p * duration));
+            setHoverTime(fmt(p * (videoRef.current?.duration || 0)));
+            // Drag-seek while holding mouse button
+            if (seeking && e.buttons === 1) {
+              const v = videoRef.current;
+              if (v && v.duration) {
+                v.currentTime = p * v.duration;
+                setCurrent(v.currentTime);
+              }
+            }
           }}
-          onMouseLeave={() => setHoverPct(null)}
+          onMouseLeave={() => { setHoverPct(null); setSeeking(false); }}
         >
           {/* Track */}
-          <div style={{ position: "absolute", left: 0, right: 0, height: 3, background: "rgba(255,255,255,0.25)", borderRadius: 99 }} />
+          <div style={{ position: "absolute", left: 0, right: 0, height: 4, background: "rgba(255,255,255,0.25)", borderRadius: 99 }} />
           {/* Fill */}
           <div style={{
-            position: "absolute", left: 0, height: 3,
+            position: "absolute", left: 0, height: 4,
             width: `${(pct / 1000) * 100}%`,
             background: "#ff0000", borderRadius: 99,
-            transition: seeking ? "none" : "width 0.1s linear",
+            pointerEvents: "none",
           }} />
           {/* Hover preview fill */}
           {hoverPct !== null && (
             <div style={{
-              position: "absolute", left: 0, height: 3,
+              position: "absolute", left: 0, height: 4,
               width: `${hoverPct}%`,
-              background: "rgba(255,255,255,0.4)", borderRadius: 99,
+              background: "rgba(255,255,255,0.35)", borderRadius: 99,
               pointerEvents: "none",
             }} />
           )}
           {/* Thumb */}
           <div style={{
-            position: "absolute", width: 13, height: 13, borderRadius: "50%",
+            position: "absolute", width: 14, height: 14, borderRadius: "50%",
             background: "#ff0000", border: "2px solid #fff",
-            left: `calc(${(pct / 1000) * 100}% - 6px)`,
+            left: `calc(${(pct / 1000) * 100}% - 7px)`,
             boxShadow: "0 0 4px rgba(0,0,0,0.6)",
-            transition: seeking ? "none" : "left 0.1s linear",
             pointerEvents: "none",
           }} />
           {/* Hover time tooltip */}
           {hoverPct !== null && (
             <div style={{
-              position: "absolute", bottom: 20,
+              position: "absolute", bottom: 22,
               left: `clamp(20px, ${hoverPct}%, calc(100% - 36px))`,
               transform: "translateX(-50%)",
               background: "rgba(0,0,0,0.85)", color: "#fff",
@@ -776,19 +806,6 @@ function ProtectedVideoPlayer({ src, identity, watermarkUrl, fullscreenId, itemI
               {hoverTime}
             </div>
           )}
-          {/* Range input */}
-          <input
-            ref={seekRef}
-            type="range" min={0} max={1000} step={1}
-            value={Math.round(pct)}
-            onMouseDown={e => { e.stopPropagation(); setSeeking(true); }}
-            onTouchStart={e => { e.stopPropagation(); setSeeking(true); }}
-            onMouseUp={e => { e.stopPropagation(); setSeeking(false); }}
-            onTouchEnd={e => { e.stopPropagation(); setSeeking(false); }}
-            onClick={e => e.stopPropagation()}
-            onChange={onSeekInput}
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer", margin: 0 }}
-          />
         </div>
 
         {/* Bottom row */}
