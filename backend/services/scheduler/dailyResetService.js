@@ -245,8 +245,27 @@ export async function performDailyReset() {
       console.log("[DailyReset] ✅ Monthly submissions reset (1st of month)");
     }
 
-    // 6. Reset status flags
-    await resetStatusFlags();
+    // 6. Reset status flags + stamp lastResetDate so startup catch-up knows it ran
+    const nowIST = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+    const y = nowIST.getFullYear();
+    const mo = String(nowIST.getMonth() + 1).padStart(2, "0");
+    const d = String(nowIST.getDate()).padStart(2, "0");
+    const todayIST = `${y}-${mo}-${d}`;
+
+    await Status.updateOne({}, {
+      $set: {
+        questionSentToday: false,
+        dailyReportGenerated: false,
+        isMonthlyReflectionDay: false,
+        isMonthlyGoalsDay: false,
+        isWeeklyReflectionDay: false,
+        todayQuestion: null,
+        todayTopic: null,
+        todayCategory: null,
+        todayPosterImage: null,
+        lastResetDate: todayIST,
+      }
+    }, { upsert: true });
     console.log("[DailyReset] ✅ Status flags reset");
 
     console.log("[DailyReset] 🔄 Daily reset complete");

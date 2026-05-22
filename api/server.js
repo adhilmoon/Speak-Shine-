@@ -358,6 +358,72 @@ if (isProd) {
   }
 }
 
+// ── Self-ping to prevent Render free tier sleep ─────────────────────────────
+// Render spins down free services after 15 min of inactivity.
+// Pinging our own health endpoint every 14 min keeps the server awake
+// so midnight cron jobs (daily reset, question publish) always fire.
+function startSelfPing() {
+  if (!isProd) return; // only needed in production
+  const selfUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+  const pingUrl = `${selfUrl}/api/health`;
+
+  setInterval(async () => {
+    try {
+      const { default: https } = await import("https");
+      const { default: http  } = await import("http");
+      const client = pingUrl.startsWith("https") ? https : http;
+      client.get(pingUrl, (res) => {
+        console.log(`[SelfPing] ✅ Pinged ${pingUrl} — status ${res.statusCode}`);
+      }).on("error", (err) => {
+        console.warn(`[SelfPing] ⚠️ Ping failed: ${err.message}`);
+      });
+    } catch (err) {
+      console.warn(`[SelfPing] ⚠️ Ping error: ${err.message}`);
+    }
+  }, 14 * 60 * 1000); // every 14 minutes
+
+  console.log(`[SelfPing] 🔁 Self-ping started → ${pingUrl} every 14 min`);
+}
+
+// ── Startup missed-reset catch-up ────────────────────────────────────────────
+// If the server was down at midnight (Render sleep), the cron never fired.
+// On every startup, check if today's reset was missed and run it immediately.
+async function checkMissedReset() {
+  try {
+    // Wait 10s for DB to be fully ready
+    await new Promise(r => setTimeout(r, 10_000));
+
+    const Status = (await import("../models/statusSchema.js")).default;
+    const s = await Status.findOne().lean();
+    if (!s) return;
+
+    // Build today's date string in IST
+    const nowIST = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+    const y = nowIST.getFullYear();
+    const m = String(nowIST.getMonth() + 1).padStart(2, "0");
+    const d = String(nowIST.getDate()).padStart(2, "0");
+    const todayIST = `${y}-${m}-${d}`;
+
+    // Only run catch-up if it's past midnight (00:05+) and reset hasn't run today
+    const hourIST = nowIST.getHours();
+    const minIST  = nowIST.getMinutes();
+    const minuteOfDay = hourIST * 60 + minIST;
+
+    if (s.lastResetDate !== todayIST && minuteOfDay >= 5) {
+      console.log(`[Startup] ⚠️  Missed midnight reset detected (lastResetDate=${s.lastResetDate}, today=${todayIST}) — running now...`);
+      const { generateDailyReports } = await import("./scheduler.js");
+      const { performDailyReset } = await import("../backend/services/scheduler/dailyResetService.js");
+      await generateDailyReports();
+      await performDailyReset();
+      console.log("[Startup] ✅ Missed reset completed");
+    } else {
+      console.log(`[Startup] ✅ Reset already ran today (${s.lastResetDate})`);
+    }
+  } catch (err) {
+    console.error("[Startup] ❌ Missed-reset check error:", err.message);
+  }
+}
+
 // ── Start ───────────────────────────────────────────────────────────────────
 connectDB()
   .then(() => {
@@ -369,6 +435,10 @@ connectDB()
     startDailyReset();
     // Recover any jobs that were processing when the server last shut down
     recoverStuckJobs();
+    // Keep Render free tier awake so cron jobs fire reliably
+    startSelfPing();
+    // Catch up on any reset that was missed while server was sleeping
+    checkMissedReset();
   })
   .catch((err) => {
     console.error("❌ Failed to start server:", err);

@@ -41,5 +41,7 @@ services:
         sync: false
       - key: ALLOWED_ORIGINS
         value: https://speak-shine.onrender.com
+      - key: RENDER_EXTERNAL_URL
+        value: https://speak-shine.onrender.com
     healthCheckPath: /api/health
     autoDeploy: true
