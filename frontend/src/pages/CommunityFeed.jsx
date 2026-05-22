@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout.jsx";
 import api from "../api/client.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -815,15 +816,18 @@ function ProtectedVideoPlayer({ src, identity, watermarkUrl, fullscreenId, itemI
 // ── Main page ────────────────────────────────────────────────────────────────
 export default function CommunityFeed() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const [feed, setFeed]         = useState([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
   const [playing, setPlaying]   = useState(null);
-  const [view, setView]         = useState({});       // id → "feedback" | "report" | null
-  const [showComments, setShowComments] = useState({}); // id → bool
+  const [view, setView]         = useState({});
+  const [showComments, setShowComments] = useState({});
   const isObscured = useContentProtection();
   const containerRefs = useRef({});
+  const itemRefs      = useRef({});   // ref per feed card for scroll-to
   const [fullscreenId, setFullscreenId] = useState(null);
+  const highlightId = searchParams.get("highlight");
 
   // Listen for native fullscreen exit (Escape key)
   useEffect(() => {
@@ -865,10 +869,32 @@ export default function CommunityFeed() {
 
   useEffect(() => {
     api.get("/video/community-feed")
-      .then(r => setFeed(r.data.feed || []))
+      .then(r => {
+        const items = r.data.feed || [];
+        setFeed(items);
+        // Auto-open comments for highlighted video
+        if (highlightId) {
+          setShowComments(prev => ({ ...prev, [highlightId]: true }));
+        }
+      })
       .catch(() => setError("Failed to load community feed"))
       .finally(() => setLoading(false));
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Scroll to highlighted card after feed renders
+  useEffect(() => {
+    if (!highlightId || loading) return;
+    // Wait two frames so the card DOM is painted
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = itemRefs.current[highlightId];
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [highlightId, loading]);
 
   const toggleView = (id, mode) =>
     setView(prev => ({ ...prev, [id]: prev[id] === mode ? null : mode }));
@@ -953,9 +979,30 @@ export default function CommunityFeed() {
           </div>
         )}
 
+        {/* Highlight pulse animation */}
+        <style>{`
+          @keyframes highlight-ring {
+            0%   { box-shadow: 0 0 0 0 rgba(124,111,255,0.8), 0 8px 32px rgba(0,0,0,0.3); }
+            40%  { box-shadow: 0 0 0 8px rgba(124,111,255,0.35), 0 8px 32px rgba(0,0,0,0.3); }
+            100% { box-shadow: 0 0 0 4px rgba(124,111,255,0.15), 0 8px 32px rgba(0,0,0,0.3); }
+          }
+        `}</style>
+
         <div style={{ display: "grid", gap: "1rem" }}>
           {feed.map((item) => (
-            <div key={item._id} className="card" style={{ padding: "1.25rem" }}>
+            <div
+              key={item._id}
+              ref={el => { itemRefs.current[item._id] = el; }}
+              className="card"
+              style={{
+                padding: "1.25rem",
+                transition: "box-shadow 0.3s",
+                ...(item._id === highlightId ? {
+                  animation: "highlight-ring 1.8s ease forwards",
+                  border: "1.5px solid rgba(124,111,255,0.55)",
+                } : {}),
+              }}
+            >
 
               {/* Header */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>

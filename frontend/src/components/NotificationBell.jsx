@@ -97,7 +97,14 @@ export default function NotificationBell() {
         setUnreadCount((c) => Math.max(0, c - 1));
       } catch {}
     }
-    if (notif.url) navigate(notif.url);
+    // Navigate: prefer explicit url, fall back to reportId deep-link, then community
+    if (notif.url) {
+      navigate(notif.url);
+    } else if (notif.reportId) {
+      navigate(`/community?highlight=${notif.reportId}`);
+    } else {
+      navigate("/community");
+    }
   };
 
   // ── Open bell: mark all read automatically ──────────────────────────────────
@@ -356,6 +363,9 @@ export default function NotificationBell() {
                         fontSize: "0.7rem",
                       }}>
                         {relativeTime(notif.createdAt)}
+                        {notif.reportId && (
+                          <span style={{ color: "#7c6fff", marginLeft: "0.4rem" }}>→ View video</span>
+                        )}
                       </div>
                     </div>
 

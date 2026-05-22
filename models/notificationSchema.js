@@ -26,6 +26,11 @@ const notificationSchema = new mongoose.Schema(
       type: String,
       default: "/community",
     },
+    /** Optional: reference to a VideoReport for deep-link navigation */
+    reportId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "VideoReport",
+    },
     read: {
       type: Boolean,
       default: false,
@@ -40,4 +45,4 @@ notificationSchema.index({ recipientPhone: 1, read: 1 });
 // TTL index: auto-delete notifications older than 30 days
 notificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 });
 
-export default mongoose.model("Notification", notificationSchema);
+export default mongoose.models.Notification || mongoose.model("Notification", notificationSchema);

@@ -262,6 +262,42 @@ export async function addComment(req, res) {
     await report.save();
 
     const saved = report.comments[report.comments.length - 1];
+
+    // ── Notify video owner (if not commenting on own video) ──────────────────
+    if (report.uploaderPhone && report.uploaderPhone !== phone) {
+      try {
+        const Notification = (await import("../../models/notificationSchema.js")).default;
+        const preview = cleanText.length > 60 ? cleanText.slice(0, 60) + "…" : cleanText;
+        const notif = await Notification.create({
+          recipientPhone: report.uploaderPhone,
+          type: "comment",
+          message: `💬 ${name} commented on your video: "${preview}"`,
+          reportId: report._id,
+          read: false,
+        });
+
+        // Real-time: emit to owner's socket if they're online
+        const io = req.app.get("io");
+        const onlineUsers = req.app.get("onlineUsers");
+        if (io && onlineUsers) {
+          const ownerSocketId = onlineUsers.get(report.uploaderPhone);
+          if (ownerSocketId) {
+            io.to(ownerSocketId).emit("notification:new", {
+              _id: notif._id,
+              type: "comment",
+              message: notif.message,
+              reportId: report._id,
+              read: false,
+              createdAt: notif.createdAt,
+            });
+          }
+        }
+      } catch (notifErr) {
+        // Non-fatal — don't fail the comment if notification fails
+        console.error("[Comment] Notification error:", notifErr.message);
+      }
+    }
+
     res.json({ comment: saved });
 
     // ── Notify the video owner (fire-and-forget, non-blocking) ──────────────

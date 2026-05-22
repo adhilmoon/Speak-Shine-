@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import Modal from "./Modal.jsx";
+import NotificationBell from "./NotificationBell.jsx";
 import { io } from "socket.io-client";
 import NotificationBell from "./NotificationBell.jsx";
 
@@ -335,6 +336,7 @@ export default function Layout({ children, title }) {
 
           <span className={`role-badge ${user?.role}`}>{user?.role}</span>
           <span className="header-name">{user?.name}</span>
+          <NotificationBell token={localStorage.getItem("token")} />
           <button className="logout-btn" onClick={handleLogout}>Logout</button>
 
           {/* Hamburger — mobile only */}

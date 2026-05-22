@@ -26,6 +26,7 @@ import attendanceRoutes from "../backend/routes/attendance.routes.js";
 import chatRoutes from "../backend/routes/chat.routes.js";
 import liveSessionRoutes from "../backend/routes/liveSessions.routes.js";
 import monitoringRoutes from "../backend/routes/monitoring.routes.js";
+import notificationRoutes from "../backend/routes/notifications.routes.js";
 import submissionsRoutes from "../backend/routes/submissions.routes.js";
 import notificationRoutes from "../backend/routes/notification.routes.js";
 
@@ -39,6 +40,7 @@ console.log("[Routes] Attendance routes loaded:", !!attendanceRoutes);
 console.log("[Routes] Chat routes loaded:", !!chatRoutes);
 console.log("[Routes] Live sessions routes loaded:", !!liveSessionRoutes);
 console.log("[Routes] Submissions routes loaded:", !!submissionsRoutes);
+console.log("[Routes] Notification routes loaded:", !!notificationRoutes);
 import { recoverStuckJobs } from "./videoQueue.js";
 import { startScheduler } from "./scheduler.js";
 import { startDailyReset } from "./scheduler.js";
@@ -159,6 +161,8 @@ if (!fs.existsSync(uploadDir)) {
 
 // Make io available to controllers via req.app.get("io")
 app.set("io", io);
+// Make onlineUsers available to controllers via req.app.get("onlineUsers")
+app.set("onlineUsers", onlineUsers);
 
 // Security headers with HSTS
 app.use(helmet({
