@@ -7,9 +7,65 @@ import * as videoService from "../services/video/videoService.js";
 import * as videoQueue from "../services/video/videoQueue.js";
 
 /**
- * GET /api/video/presign
- * Generate presigned upload URL for direct browser upload to R2
+ * PUT /api/video/proxy-upload
+ * Streams the video body from the browser directly to R2 via the presigned URL.
+ * This avoids CORS issues — the browser uploads to our server, we pipe to R2.
+ * express.raw() middleware buffers the body before this handler runs.
  */
+export async function proxyUpload(req, res) {
+  try {
+    const uploadUrl = req.headers["x-upload-url"];
+    const mimeType  = req.headers["content-type"] || "video/mp4";
+
+    if (!uploadUrl) {
+      return res.status(400).json({ error: "Missing x-upload-url header" });
+    }
+
+    // Validate the URL is our R2 bucket (prevent SSRF)
+    let parsed;
+    try { parsed = new URL(uploadUrl); } catch {
+      return res.status(400).json({ error: "Invalid upload URL" });
+    }
+
+    const r2Endpoint = process.env.R2_ENDPOINT || "";
+    let r2Host = "";
+    try { r2Host = new URL(r2Endpoint).hostname; } catch {}
+
+    if (!parsed.hostname.endsWith("r2.cloudflarestorage.com") && parsed.hostname !== r2Host) {
+      console.error("[ProxyUpload] SSRF attempt blocked:", parsed.hostname);
+      return res.status(400).json({ error: "Invalid upload URL" });
+    }
+
+    // req.body is a Buffer (from express.raw middleware)
+    const body = req.body;
+    if (!body || body.length === 0) {
+      return res.status(400).json({ error: "Empty upload body" });
+    }
+
+    console.log(`[ProxyUpload] Uploading ${(body.length / 1024 / 1024).toFixed(1)}MB to R2 for user: ${req.user?.id}`);
+
+    // PUT the buffer directly to R2 using the presigned URL
+    const r2Response = await fetch(uploadUrl, {
+      method:  "PUT",
+      headers: { "Content-Type": mimeType },
+      body,
+    });
+
+    if (!r2Response.ok) {
+      const text = await r2Response.text().catch(() => "");
+      console.error("[ProxyUpload] R2 rejected upload:", r2Response.status, text);
+      return res.status(502).json({ error: `R2 upload failed: ${r2Response.status}` });
+    }
+
+    console.log("[ProxyUpload] ✅ Upload proxied to R2 successfully");
+    res.json({ success: true });
+  } catch (error) {
+    console.error("[ProxyUpload] Error:", error.message);
+    res.status(500).json({ error: "Upload failed: " + error.message });
+  }
+}
+
+
 export async function getPresignedUrl(req, res) {
   try {
     const { filename = "video.webm", mimeType = "video/webm" } = req.query;

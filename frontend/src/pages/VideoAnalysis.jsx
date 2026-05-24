@@ -653,15 +653,24 @@ function UploadCard({ onAnalysisStarted, isMonthlyReflection, isMonthlyGoals, is
         params: { filename: fileToUpload.name, mimeType: fileToUpload.type || "video/mp4" },
       });
 
-      // Step 2: Upload directly to R2 — Railway never touches the file
+      // Step 2: Upload via our backend proxy (avoids CORS issues with R2 direct upload)
       await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.open("PUT", presign.uploadUrl);
+        xhr.open("PUT", "/api/video/proxy-upload");
         xhr.setRequestHeader("Content-Type", fileToUpload.type || "video/mp4");
+        xhr.setRequestHeader("x-upload-url", presign.uploadUrl);
         xhr.upload.onprogress = (e) => {
           if (e.total) setProgress(Math.round((e.loaded / e.total) * 99));
         };
-        xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`R2 upload failed: ${xhr.status}`));
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            let msg = `Upload failed (${xhr.status})`;
+            try { msg = JSON.parse(xhr.responseText)?.error || msg; } catch {}
+            reject(new Error(msg));
+          }
+        };
         xhr.onerror = () => reject(new Error("Network error during upload"));
         xhr.send(fileToUpload);
       });
@@ -1219,21 +1228,28 @@ function RecordCard({ onAnalysisStarted, question, isMonthlyReflection, isMonthl
         params: { filename: file.name, mimeType: file.type },
       });
 
-      // Step 2: Upload directly to R2
+      // Step 2: Upload via our backend proxy (avoids CORS issues with R2 direct upload)
       await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.open("PUT", presign.uploadUrl);
+        xhr.open("PUT", "/api/video/proxy-upload");
         xhr.setRequestHeader("Content-Type", file.type);
+        xhr.setRequestHeader("x-upload-url", presign.uploadUrl);
         xhr.upload.onprogress = (e) => { 
           if (e.total) {
-            // 10% reserved for frame extraction, 10-99% for R2 upload, 100% for frames+confirm
+            // 10% reserved for frame extraction, 10-99% for upload, 100% for frames+confirm
             const uploadPercent = Math.round((e.loaded / e.total) * 89);
             setUploadProgress(10 + uploadPercent);
           }
         };
         xhr.onload = () => {
           console.log(`[Upload] XHR completed with status: ${xhr.status}`);
-          xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`));
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            let msg = `Upload failed (${xhr.status})`;
+            try { msg = JSON.parse(xhr.responseText)?.error || msg; } catch {}
+            reject(new Error(msg));
+          }
         };
         xhr.onerror = () => {
           console.error(`[Upload] XHR error`);

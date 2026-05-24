@@ -142,9 +142,16 @@ export async function getPresignedUploadUrl(key, mimeType = "video/webm") {
       Bucket:      BUCKET,
       Key:         key,
       ContentType: mimeType,
+      // Explicitly disable checksum — AWS SDK v3.600+ auto-adds x-amz-checksum-crc32
+      // which R2 does not support and rejects with 403.
+      ChecksumAlgorithm: undefined,
     });
     
-    const url = await getSignedUrl(r2, command, { expiresIn: 900 }); // 15 min
+    const url = await getSignedUrl(r2, command, {
+      expiresIn: 900, // 15 min
+      // Disable the SDK's automatic checksum injection for presigned URLs
+      unhoistableHeaders: new Set(["x-amz-checksum-crc32", "x-amz-sdk-checksum-algorithm"]),
+    });
     console.log("[R2] Presigned URL generated successfully");
     return url;
   } catch (error) {

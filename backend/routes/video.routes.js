@@ -46,6 +46,22 @@ function handleMulterError(err, req, res, next) {
 // /presign just generates a URL — doesn't count against upload limit
 router.get("/presign", authMiddleware, videoController.getPresignedUrl);
 
+// /proxy-upload: browser sends file here, server streams it to R2 (avoids CORS on R2)
+// Uses the presigned URL from /presign — no file is stored on the server
+router.put(
+  "/proxy-upload",
+  authMiddleware,
+  (req, res, next) => {
+    // Enforce 110MB limit at the routing layer
+    const contentLength = parseInt(req.headers["content-length"] || "0", 10);
+    if (contentLength > 110 * 1024 * 1024) {
+      return res.status(413).json({ error: "File too large. Maximum is 110MB." });
+    }
+    next();
+  },
+  videoController.proxyUpload
+);
+
 // /upload-frames receives browser-extracted frames for AI analysis (doesn't count against limit)
 router.post("/upload-frames", authMiddleware, videoController.uploadFrames);
 
