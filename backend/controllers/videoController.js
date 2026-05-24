@@ -20,7 +20,6 @@ export async function proxyUpload(req, res) {
     if (!uploadUrl) {
       return res.status(400).json({ error: "Missing x-upload-url header" });
     }
-
     // Validate the URL is our R2 bucket (prevent SSRF)
     let parsed;
     try { parsed = new URL(uploadUrl); } catch {
