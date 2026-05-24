@@ -659,6 +659,7 @@ function UploadCard({ onAnalysisStarted, isMonthlyReflection, isMonthlyGoals, is
         xhr.open("PUT", "/api/video/proxy-upload");
         xhr.setRequestHeader("Content-Type", fileToUpload.type || "video/mp4");
         xhr.setRequestHeader("x-upload-url", presign.uploadUrl);
+        xhr.setRequestHeader("Authorization", `Bearer ${localStorage.getItem("token")}`);
         xhr.upload.onprogress = (e) => {
           if (e.total) setProgress(Math.round((e.loaded / e.total) * 99));
         };
@@ -1234,6 +1235,7 @@ function RecordCard({ onAnalysisStarted, question, isMonthlyReflection, isMonthl
         xhr.open("PUT", "/api/video/proxy-upload");
         xhr.setRequestHeader("Content-Type", file.type);
         xhr.setRequestHeader("x-upload-url", presign.uploadUrl);
+        xhr.setRequestHeader("Authorization", `Bearer ${localStorage.getItem("token")}`);
         xhr.upload.onprogress = (e) => { 
           if (e.total) {
             // 10% reserved for frame extraction, 10-99% for upload, 100% for frames+confirm
