@@ -5,9 +5,15 @@
 
 import * as videoService from "../services/video/videoService.js";
 import * as videoQueue from "../services/video/videoQueue.js";
+import { COMMUNITY_ROOM } from "../services/chat/chatService.js";
 import fs from "fs";
 import path from "path";
 import os from "os";
+
+function broadcastCommunity(req, event, payload) {
+  const io = req.app.get("io");
+  if (io) io.to(COMMUNITY_ROOM).emit(event, payload);
+}
 
 /**
  * PUT /api/video/proxy-upload
@@ -277,6 +283,7 @@ export async function reactToVideo(req, res) {
           type: "like",
           message: `👍 ${name} liked your video!`,
           reportId: report._id,
+          url: `/community?highlight=${report._id}`,
           read: false,
         });
 
@@ -291,6 +298,7 @@ export async function reactToVideo(req, res) {
               type: "like",
               message: notif.message,
               reportId: report._id,
+              url: notif.url,
               read: false,
               createdAt: notif.createdAt,
             });
@@ -302,7 +310,19 @@ export async function reactToVideo(req, res) {
       }
     }
 
-    res.json({ likes: report.likes.length, dislikes: report.dislikes.length, userReaction: alreadyReacted ? null : reaction });
+    const likeCount = report.likes.length;
+    const dislikeCount = report.dislikes.length;
+    const actorReaction = alreadyReacted ? null : reaction;
+
+    broadcastCommunity(req, "community:react", {
+      reportId: report._id.toString(),
+      likeCount,
+      dislikeCount,
+      actorPhone: phone,
+      actorReaction,
+    });
+
+    res.json({ likes: likeCount, dislikes: dislikeCount, userReaction: actorReaction });
   } catch (error) {
     console.error("[React] Error:", error.message);
     res.status(500).json({ error: "Failed to react" });
@@ -361,6 +381,7 @@ export async function addComment(req, res) {
           type: "comment",
           message: `💬 ${name} commented on your video: "${preview}"`,
           reportId: report._id,
+          url: `/community?highlight=${report._id}`,
           read: false,
         });
 
@@ -375,6 +396,7 @@ export async function addComment(req, res) {
               type: "comment",
               message: notif.message,
               reportId: report._id,
+              url: notif.url,
               read: false,
               createdAt: notif.createdAt,
             });
@@ -386,32 +408,19 @@ export async function addComment(req, res) {
       }
     }
 
+    broadcastCommunity(req, "community:comment", {
+      reportId: report._id.toString(),
+      comment: {
+        _id: saved._id,
+        name: saved.name,
+        role: saved.role,
+        text: saved.text,
+        createdAt: saved.createdAt,
+        authorPhone: phone,
+      },
+    });
+
     res.json({ comment: saved });
-
-    // ── Notify the video owner (fire-and-forget, non-blocking) ──────────────
-    // Only notify if the commenter is NOT the video owner
-    try {
-      const User = (await import("../../models/userSchema.js")).default;
-      const owner = await User.findById(report.userId).select("phone").lean();
-
-      if (owner && owner.phone !== phone) {
-        const { createNotification } = await import("../services/notification/notificationService.js");
-        const { getOnlineUsers } = await import("../sockets/chatSocket.js");
-
-        const preview = cleanText.length > 60 ? cleanText.slice(0, 60) + "…" : cleanText;
-        await createNotification({
-          recipientPhone: owner.phone,
-          type:           "comment",
-          message:        `${name} commented: "${preview}"`,
-          url:            "/community",
-          io:             req.app.get("io"),
-          onlineUsers:    getOnlineUsers(),
-        });
-      }
-    } catch (notifErr) {
-      // Notifications are non-critical — log but never fail the comment response
-      console.error("[Comment] Notification error (non-fatal):", notifErr.message);
-    }
   } catch (error) {
     console.error("[Comment] Add error:", error.message);
     res.status(500).json({ error: "Failed to add comment" });
@@ -444,6 +453,12 @@ export async function deleteComment(req, res) {
 
     comment.deleteOne();
     await report.save();
+
+    broadcastCommunity(req, "community:comment-deleted", {
+      reportId: report._id.toString(),
+      commentId: commentId,
+    });
+
     res.json({ success: true });
   } catch (error) {
     console.error("[Comment] Delete error:", error.message);

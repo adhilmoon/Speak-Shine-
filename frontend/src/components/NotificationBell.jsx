@@ -69,7 +69,7 @@ export default function NotificationBell() {
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  // ── Mark all read ───────────────────────────────────────────────────────────
+  // ── Mark all read (keeps notifications visible, only clears unread badge) ─────
   const markAllRead = async () => {
     if (!token || unreadCount === 0) return;
     try {
@@ -77,18 +77,20 @@ export default function NotificationBell() {
         method:  "PATCH",
         headers: { Authorization: `Bearer ${token}` },
       });
-      setNotifications([]);
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
       setUnreadCount(0);
     } catch {}
   };
 
-  // ── Mark one read & navigate ────────────────────────────────────────────────
+  // ── Mark one read & navigate (notification stays in list as read) ───────────
   const handleClick = async (notif) => {
     setOpen(false);
-    setNotifications((prev) => prev.filter((n) => n._id !== notif._id));
-    setUnreadCount((c) => Math.max(0, notif.read ? c : c - 1));
 
     if (!notif.read) {
+      setNotifications((prev) =>
+        prev.map((n) => (n._id === notif._id ? { ...n, read: true } : n))
+      );
+      setUnreadCount((c) => Math.max(0, c - 1));
       try {
         await fetch(`/api/notifications/${notif._id}/read`, {
           method:  "PATCH",
@@ -96,6 +98,7 @@ export default function NotificationBell() {
         });
       } catch {}
     }
+
     if (notif.url) {
       navigate(notif.url);
     } else if (notif.reportId) {
@@ -105,14 +108,7 @@ export default function NotificationBell() {
     }
   };
 
-  // ── Open bell: show notifications, then mark all read after 2s ─────────────
-  const togglePanel = () => {
-    const next = !open;
-    setOpen(next);
-    if (next && unreadCount > 0) {
-      setTimeout(() => markAllRead(), 2000);
-    }
-  };
+  const togglePanel = () => setOpen((v) => !v);
 
   // ── Relative time helper ────────────────────────────────────────────────────
   const relativeTime = (date) => {

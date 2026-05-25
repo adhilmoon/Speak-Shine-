@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout.jsx";
 import api from "../api/client.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import { getSharedSocket } from "../hooks/useSocket.js";
 
 const scoreColor = v => v >= 7 ? "var(--success)" : v >= 5 ? "var(--warning)" : "var(--danger)";
 const scoreBg    = v => v >= 7 ? "rgba(74,222,128,0.1)" : v >= 5 ? "rgba(251,191,36,0.1)" : "rgba(248,113,113,0.1)";
@@ -815,7 +816,7 @@ function ProtectedVideoPlayer({ src, identity, watermarkUrl, fullscreenId, itemI
 
 // ── Main page ────────────────────────────────────────────────────────────────
 export default function CommunityFeed() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [searchParams] = useSearchParams();
   const [feed, setFeed]         = useState([]);
   const [loading, setLoading]   = useState(true);
@@ -876,6 +877,66 @@ export default function CommunityFeed() {
       .catch(() => setError("Failed to load community feed"))
       .finally(() => setLoading(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Real-time comment & like updates from other users
+  useEffect(() => {
+    if (!token) return;
+    const socket = getSharedSocket(token);
+    const myPhone = user?.phone;
+
+    const onComment = ({ reportId, comment }) => {
+      if (!reportId || !comment) return;
+      setFeed(prev => prev.map(item => {
+        if (item._id !== reportId) return item;
+        if ((item.comments || []).some(c => String(c._id) === String(comment._id))) return item;
+        return {
+          ...item,
+          comments: [
+            ...(item.comments || []),
+            {
+              _id: comment._id,
+              name: comment.name,
+              role: comment.role,
+              text: comment.text,
+              createdAt: comment.createdAt,
+              isOwn: comment.authorPhone === myPhone,
+            },
+          ],
+        };
+      }));
+    };
+
+    const onCommentDeleted = ({ reportId, commentId }) => {
+      if (!reportId || !commentId) return;
+      setFeed(prev => prev.map(item =>
+        item._id === reportId
+          ? { ...item, comments: (item.comments || []).filter(c => String(c._id) !== String(commentId)) }
+          : item
+      ));
+    };
+
+    const onReact = ({ reportId, likeCount, dislikeCount, actorPhone, actorReaction }) => {
+      if (!reportId) return;
+      setFeed(prev => prev.map(item => {
+        if (item._id !== reportId) return item;
+        return {
+          ...item,
+          likeCount,
+          dislikeCount,
+          userReaction: actorPhone === myPhone ? actorReaction : item.userReaction,
+        };
+      }));
+    };
+
+    socket.on("community:comment", onComment);
+    socket.on("community:comment-deleted", onCommentDeleted);
+    socket.on("community:react", onReact);
+    return () => {
+      socket.off("community:comment", onComment);
+      socket.off("community:comment-deleted", onCommentDeleted);
+      socket.off("community:react", onReact);
+    };
+  }, [token, user?.phone]);
 
   // Auto-open comments when highlightId changes (e.g. clicking notification while already on page)
   useEffect(() => {

@@ -4,7 +4,7 @@
  */
 
 import jwt from "jsonwebtoken";
-import { roomKey, liveSessionRoom, getMessages, saveMessages, MAX_MESSAGES, GROUP_ROOM } from "../services/chat/chatService.js";
+import { roomKey, liveSessionRoom, getMessages, saveMessages, MAX_MESSAGES, GROUP_ROOM, COMMUNITY_ROOM } from "../services/chat/chatService.js";
 import { isRedisAvailable, getRedisClient } from "../config/redis.js";
 import { sanitizeText, isValidPhone, SanitizeError, LIMITS } from "../utils/textSanitizer.js";
 
@@ -114,8 +114,9 @@ export function initializeChatSocket(io, onlineUsers) {
       socket.emit("chat:error", { message: "Chat service temporarily unavailable" });
     }
 
-    // ── Auto-join group room ─────────────────────────────────────────────────
+    // ── Auto-join group + community feed rooms ───────────────────────────────
     socket.join(GROUP_ROOM);
+    socket.join(COMMUNITY_ROOM);
 
     // ── Group: load history ──────────────────────────────────────────────────
     socket.on("group:join", async () => {

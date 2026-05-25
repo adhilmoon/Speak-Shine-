@@ -9,7 +9,8 @@ import { getRedisClient, isRedisAvailable } from "../../config/redis.js";
 const TTL          = 86400;        // 24 hours — DM and group chat
 const TTL_LIVE     = 12 * 3600;    // 12 hours — live session chat (after session ends)
 const MAX_MESSAGES = 200;
-const GROUP_ROOM   = "chat:group";
+const GROUP_ROOM      = "chat:group";
+const COMMUNITY_ROOM  = "community:feed";
 
 /**
  * Canonical room key for DMs
@@ -138,5 +139,5 @@ export async function getChatHistory(myPhone, peerPhone) {
 // Export utility functions for socket handlers
 export {
   roomKey, liveSessionRoom, getMessages, saveMessages,
-  MAX_MESSAGES, TTL, TTL_LIVE, GROUP_ROOM, expireLiveSessionChat,
+  MAX_MESSAGES, TTL, TTL_LIVE, GROUP_ROOM, COMMUNITY_ROOM, expireLiveSessionChat,
 };
