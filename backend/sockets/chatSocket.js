@@ -7,6 +7,7 @@ import jwt from "jsonwebtoken";
 import { roomKey, liveSessionRoom, getMessages, saveMessages, MAX_MESSAGES, GROUP_ROOM, COMMUNITY_ROOM } from "../services/chat/chatService.js";
 import { isRedisAvailable, getRedisClient } from "../config/redis.js";
 import { sanitizeText, isValidPhone, SanitizeError, LIMITS } from "../utils/textSanitizer.js";
+import { phoneVariants } from "../utils/phoneVariants.js";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -106,7 +107,10 @@ export function initializeChatSocket(io, onlineUsers) {
 
   io.on("connection", (socket) => {
     const { phone, name, role } = socket.user;
-    onlineUsers.set(phone, socket.id);
+    // Register all phone format variants so notifications/DMs route correctly
+    for (const variant of phoneVariants(phone)) {
+      onlineUsers.set(variant, socket.id);
+    }
     console.log(`[Chat] Connected: ${name} (${role}) - Socket ID: ${socket.id}`);
 
     if (!isRedisAvailable()) {
@@ -474,8 +478,10 @@ export function initializeChatSocket(io, onlineUsers) {
     });
 
     socket.on("disconnect", () => {
-      if (onlineUsers.get(phone) === socket.id) {
-        onlineUsers.delete(phone);
+      for (const variant of phoneVariants(phone)) {
+        if (onlineUsers.get(variant) === socket.id) {
+          onlineUsers.delete(variant);
+        }
       }
       console.log(`[Chat] Disconnected: ${name} (${phone})`);
     });
