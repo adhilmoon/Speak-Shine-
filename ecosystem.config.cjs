@@ -26,7 +26,7 @@ module.exports = {
     // Auto-restart configuration
     autorestart: true,
     watch: false,
-    max_memory_restart: '1G',
+    max_memory_restart: '4G',
     
     // Logging
     error_file: '~/.pm2/logs/speak-shine-error.log',
