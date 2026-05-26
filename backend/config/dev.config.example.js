@@ -7,7 +7,7 @@
  * Do NOT commit `dev.config.js` — it may contain secrets.
  */
 
-module.exports = {
+export default {
   // Example local MongoDB for contributors
   MONGO_URI: 'mongodb://127.0.0.1:27017/whatsapp-bot-dev',
 

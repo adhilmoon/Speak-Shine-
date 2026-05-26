@@ -16,6 +16,10 @@ frontend/.env.local
 backend/.env
 # Local backend config override (do not commit)
 backend/config/dev.config.js
+# Infisical local cache and metadata
+.infisical/
+.infisical.local
+.infisical.env
 # Local dotenv overrides
 .env.local
 .env.*.local
