@@ -23,3 +23,4 @@ backend/config/dev.config.js
 # Local dotenv overrides
 .env.local
 .env.*.local
+dev.md
