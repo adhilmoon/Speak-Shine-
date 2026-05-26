@@ -112,7 +112,7 @@ LIVEKIT_URL=wss://...
 # App
 PORT=3001
 NODE_ENV=production
-FINE_AMOUNT=2
+FINE_AMOUNT=5
 ALLOWED_ORIGINS=https://your-domain.com
 
 # Feature flags (all default false)

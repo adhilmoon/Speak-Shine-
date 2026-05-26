@@ -8,6 +8,7 @@ import Status from "../../../models/statusSchema.js";
 import DailyReport from "../../../models/dailyReportSchema.js";
 import StreakRecord from "../../../models/streakRecordSchema.js";
 import { generateSVGPoster } from "../../../api/posterGenerator.js";
+import env from "../../config/env.js";
 
 /**
  * Get poster image - use bot's stored PNG if available, else generate SVG fallback
@@ -182,6 +183,7 @@ export async function getUserProfile(phone) {
       streak: user.streak || 0,
       fine: user.fine || 0,
       weeklyFine: user.weeklyFine || 0,
+      fineAmount: env.FINE_AMOUNT,
       completed: user.completed || false,
       weeklySubmissions: user.weeklySubmissions || 0,
       monthlySubmissions: user.monthlySubmissions || 0,

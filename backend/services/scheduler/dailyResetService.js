@@ -6,6 +6,7 @@
 import User from "../../../models/userSchema.js";
 import Status from "../../../models/statusSchema.js";
 import StreakRecord from "../../../models/streakRecordSchema.js";
+import env from "../../config/env.js";
 
 const TIMEZONE = "Asia/Kolkata";
 
@@ -33,7 +34,7 @@ export function computeMissedDayFineUpdate(currentFine, fineAmount) {
  */
 export async function applyDailyFinesAndStreaks() {
   try {
-    const FINE_AMOUNT = Number(process.env.FINE_AMOUNT) || 2;
+    const FINE_AMOUNT = Number(env.FINE_AMOUNT) || 5;
     const STREAK_REWARD_DAYS = 7;
     const STREAK_REWARD_AMOUNT = 5;
 

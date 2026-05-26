@@ -896,7 +896,11 @@ export default function UserDashboard() {
                   {isCredit ? `+₹${Math.abs(fine)}` : `₹${fine}`}
                 </div>
                 <div style={{ fontSize: "0.68rem", color: "var(--muted)", marginTop: "0.25rem" }}>
-                  {isCredit ? `${Math.floor(Math.abs(fine) / 2)} free day${Math.floor(Math.abs(fine) / 2) !== 1 ? "s" : ""} buffered` : fine > 0 ? "accumulated total" : "no fines 🎉"}
+                  {isCredit ? (() => {
+                    const fineAmount = profile?.fineAmount || 5;
+                    const bufferedDays = Math.floor(Math.abs(fine) / fineAmount);
+                    return `${bufferedDays} free day${bufferedDays !== 1 ? "s" : ""} buffered`;
+                  })() : fine > 0 ? "accumulated total" : "no fines 🎉"}
                 </div>
               </div>
             );

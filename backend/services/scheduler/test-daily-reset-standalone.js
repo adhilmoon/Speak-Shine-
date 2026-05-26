@@ -4,14 +4,15 @@
  * From project root:
  *   node backend/services/scheduler/test-daily-reset-standalone.js
  *
- * Uses FINE_AMOUNT from env (default 2), same as production reset.
+ * Uses FINE_AMOUNT from env (default 5), same as production reset.
  *
  * Do NOT run dailyResetService.test.js with node — use: npm test
  */
 
 import { computeMissedDayFineUpdate } from "./dailyResetService.js";
+import env from "../../config/env.js";
 
-const FINE = Number(process.env.FINE_AMOUNT) || 2;
+const FINE = Number(env.FINE_AMOUNT) || 5;
 let passed = 0;
 let failed = 0;
 
