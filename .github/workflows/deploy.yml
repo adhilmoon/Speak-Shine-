@@ -17,21 +17,12 @@ jobs:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
-          script_stop: true
 
           script: |
-            cd ~/Speak-Shine
-
-            echo "Pull latest code"
+            cd ~/Speak-Shine-
 
             git pull origin main
 
-            echo "Install packages"
-
             npm install
 
-            echo "Restart PM2"
-
             pm2 restart speak-shine
-
-            echo "Deployment success"
