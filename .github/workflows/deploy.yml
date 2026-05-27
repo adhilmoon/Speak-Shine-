@@ -27,7 +27,9 @@ jobs:
 
       - name: Build Docker Image
         run: |
-          docker build -t speak-shine .
+            docker build \
+            --platform linux/amd64 \
+            -t speak-shine .
 
       - name: Tag Docker Image
         run: |
