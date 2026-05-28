@@ -102,6 +102,8 @@ jobs:
             echo "Start updated containers"
             echo "================================="
 
+            docker compose down
+            docker compose pull
             docker compose up -d --force-recreate
 
             echo "================================="
