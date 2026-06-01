@@ -1699,7 +1699,7 @@ function RecordCard({ onAnalysisStarted, question, isMonthlyReflection, isMonthl
     }
   };
 
-  const togglePause = () => {
+  const togglePause = useCallback(() => {
     if (!recorderRef.current) return;
     if (recorderRef.current.state === "recording") {
       closeActiveRecordingSegment();
@@ -1717,7 +1717,22 @@ function RecordCard({ onAnalysisStarted, question, isMonthlyReflection, isMonthl
       }, 1000);
       setIsPaused(false);
     }
-  };
+  }, [closeActiveRecordingSegment, getWallClockElapsed, MAX_SECONDS]);
+
+  // ── Spacebar = pause / resume while recording ────────────────────────────
+  useEffect(() => {
+    if (step !== "recording") return;
+    const onKey = (e) => {
+      // Only trigger on spacebar; ignore if user is typing in an input/textarea
+      if (e.code !== "Space") return;
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      e.preventDefault(); // prevent page scroll
+      togglePause();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [step, togglePause]);
 
   const retake = () => {
     // Delete the IndexedDB draft so it doesn't restore again
@@ -2140,10 +2155,19 @@ function RecordCard({ onAnalysisStarted, question, isMonthlyReflection, isMonthl
               }}>🎙️ AI NC</div>
             )}
 
-            {/* Timer bar */}
+            {/* Timer bar — color shifts green→yellow→red as time fills up */}
             <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "4px", background: "rgba(255,255,255,0.15)", borderRadius: "0 0 12px 12px" }}>
-              <div style={{ height: "100%", width: `${(elapsed / MAX_SECONDS) * 100}%`,
-                background: elapsed > 240 ? "var(--danger)" : "var(--primary)", borderRadius: "inherit", transition: "width 1s linear" }} />
+              <div style={{
+                height: "100%",
+                width: `${(elapsed / MAX_SECONDS) * 100}%`,
+                background: elapsed >= MAX_SECONDS * 0.8
+                  ? "var(--danger)"
+                  : elapsed >= MAX_SECONDS * 0.6
+                  ? "var(--warning)"
+                  : "var(--primary)",
+                borderRadius: "inherit",
+                transition: "width 1s linear, background 0.5s ease",
+              }} />
             </div>
           </div>
 
@@ -2154,45 +2178,63 @@ function RecordCard({ onAnalysisStarted, question, isMonthlyReflection, isMonthl
           }}>
             {/* Timer display */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                 <span style={{
                   width: 10, height: 10, borderRadius: "50%",
                   background: isPaused ? "var(--warning)" : "var(--danger)",
                   animation: isPaused ? "none" : "blink 1s infinite",
                   display: "inline-block",
+                  flexShrink: 0,
                 }} />
-                <span style={{ fontSize: "1.5rem", fontWeight: 800, fontVariantNumeric: "tabular-nums", color: elapsed > 240 ? "var(--danger)" : "var(--text)" }}>
+                <span style={{
+                  fontSize: "2rem", fontWeight: 800, fontVariantNumeric: "tabular-nums",
+                  color: elapsed >= MAX_SECONDS * 0.8
+                    ? "var(--danger)"
+                    : elapsed >= MAX_SECONDS * 0.5
+                    ? "var(--warning)"
+                    : "var(--success)",
+                  letterSpacing: "0.04em",
+                }}>
                   {fmtTime(elapsed)}
                 </span>
               </div>
-              <span style={{ fontSize: "0.8rem", color: "var(--muted)" }}>/ {fmtTime(MAX_SECONDS)} max</span>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.15rem" }}>
+                <span style={{ fontSize: "0.75rem", color: "var(--muted)", fontWeight: 500 }}>
+                  max {fmtTime(MAX_SECONDS)}
+                </span>
+                <span style={{ fontSize: "0.7rem", color: elapsed < 60 ? "var(--warning)" : "var(--success)", fontWeight: 600 }}>
+                  {elapsed < 60 ? `${60 - elapsed}s to min` : "✓ min reached"}
+                </span>
+              </div>
             </div>
 
             {/* Progress bar */}
             <div style={{ background: "var(--bg)", borderRadius: 6, height: 6, overflow: "hidden" }}>
               <div style={{
                 height: "100%", width: `${(elapsed / MAX_SECONDS) * 100}%`,
-                background: elapsed > 240 ? "var(--danger)" : "var(--primary)",
+                background: elapsed > MAX_SECONDS * 0.8 ? "var(--danger)" : elapsed > MAX_SECONDS * 0.6 ? "var(--warning)" : "var(--primary)",
                 borderRadius: 6, transition: "width 1s linear",
               }} />
             </div>
 
             {/* Buttons */}
-            <div style={{ display: "flex", gap: "0.6rem" }}>
+            <div style={{ display: "flex", gap: "0.75rem" }}>
               <button onClick={togglePause} style={{
-                flex: 1, padding: "0.75rem", borderRadius: 10, fontWeight: 700, fontSize: "0.9rem",
+                flex: 1, padding: "0.85rem 0.5rem", borderRadius: 12, fontWeight: 700, fontSize: "1rem",
                 background: isPaused ? "rgba(34,211,160,0.15)" : "rgba(245,158,11,0.15)",
-                border: `1px solid ${isPaused ? "rgba(34,211,160,0.3)" : "rgba(245,158,11,0.3)"}`,
+                border: `2px solid ${isPaused ? "rgba(34,211,160,0.4)" : "rgba(245,158,11,0.4)"}`,
                 color: isPaused ? "var(--success)" : "var(--warning)", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: "0.4rem",
               }}>
                 {isPaused ? "▶ Resume" : "⏸ Pause"}
               </button>
               <button onClick={stopRecording} style={{
-                flex: 1, padding: "0.75rem", borderRadius: 10, fontWeight: 700, fontSize: "0.9rem",
-                background: "rgba(248,113,113,0.15)", border: "1px solid rgba(248,113,113,0.3)",
+                flex: 1, padding: "0.85rem 0.5rem", borderRadius: 12, fontWeight: 700, fontSize: "1rem",
+                background: "rgba(248,113,113,0.15)", border: "2px solid rgba(248,113,113,0.4)",
                 color: "var(--danger)", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: "0.4rem",
               }}>
-                ⏹ Stop & Preview
+                ⏹ Stop
               </button>
             </div>
 
@@ -2202,6 +2244,11 @@ function RecordCard({ onAnalysisStarted, question, isMonthlyReflection, isMonthl
                 ⏱️ Keep going — minimum 1 minute required ({60 - elapsed}s left)
               </div>
             )}
+
+            {/* Spacebar hint */}
+            <div style={{ fontSize: "0.72rem", color: "var(--muted)", textAlign: "center", opacity: 0.6 }}>
+              Press <kbd style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4, padding: "0.1rem 0.4rem", fontSize: "0.7rem", fontFamily: "monospace" }}>Space</kbd> to pause / resume
+            </div>
 
             {/* Vocabulary chips — visible during recording */}
             {vocabulary.length > 0 && (

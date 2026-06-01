@@ -493,18 +493,8 @@ export function startDailyReset() {
   // Clean up expired R2 videos every hour
   cron.schedule("0 * * * *", cleanExpiredVideos, { timezone: TIMEZONE });
 
-  // ── 11:00 AM: reset todayScore for all users ─────────────────────────────
-  cron.schedule("0 11 * * *", async () => {
-    try {
-      const result = await User.updateMany({}, { $set: { todayScore: null } });
-      console.log(`[Scheduler] ✅ 11am todayScore reset — cleared ${result.modifiedCount} user(s)`);
-    } catch (err) {
-      console.error("[Scheduler] ❌ 11am todayScore reset error:", err.message);
-    }
-  }, { timezone: TIMEZONE });
-
   // Run once on startup to catch any orphaned videos from previous sessions
   setTimeout(cleanExpiredVideos, 5000);
   
-  console.log("[Scheduler] ✅ Daily reset scheduler running (00:00 midnight + 00:05 safety fallback + 11:00 score reset)");
+  console.log("[Scheduler] ✅ Daily reset scheduler running (00:00 midnight + 00:05 safety fallback)");
 }

@@ -22,8 +22,11 @@ const userSchema = new mongoose.Schema({
     }],
     default: [],
   },
-  // Today's composite score (0–100). Overwritten on each submission; reset to null at 11am daily.
-  todayScore: { type: Number, default: null, min: 0, max: 100 },
+  // Monthly cumulative score — each day's composite score (0–100) is ADDED once per day.
+  // Resets to 0 on the 1st of every month. Never resets daily.
+  // lastScoreDate (YYYY-MM-DD IST) prevents double-counting on re-submissions.
+  monthlyScore: { type: Number, default: 0, min: 0 },
+  lastScoreDate: { type: String, default: null }, // "YYYY-MM-DD" in IST
 });
 
 userSchema.index({ phone: 1 });

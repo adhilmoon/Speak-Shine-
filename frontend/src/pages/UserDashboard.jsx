@@ -1064,8 +1064,8 @@ export default function UserDashboard() {
                   </span>
                   <span className="streak-val">🔥 {u.streak} days</span>
                   <span className="streak-sub">{u.weeklySubmissions}/7</span>
-                  {/* Today's score — shown if submitted */}
-                  {u.completed && u.todayScore != null ? (
+                  {/* Monthly score — shown if user has any score this month */}
+                  {u.monthlyScore > 0 ? (
                     <span style={{
                       fontSize: "0.78rem", fontWeight: 700,
                       padding: "0.2rem 0.55rem", borderRadius: 20,
@@ -1073,7 +1073,7 @@ export default function UserDashboard() {
                       color: "#c4b5fd",
                       whiteSpace: "nowrap",
                     }}>
-                      {u.todayScore.toFixed(1)}/100
+                      {Math.round(u.monthlyScore)} pts
                     </span>
                   ) : (
                     <span style={{ width: "4rem" }} />
@@ -1115,7 +1115,7 @@ export default function UserDashboard() {
                 </span>
                 <span className="streak-val">🔥 {data.myStreakEntry.streak} days</span>
                 <span className="streak-sub">{data.myStreakEntry.weeklySubmissions}/7</span>
-                {data.myStreakEntry.completed && data.myStreakEntry.todayScore != null ? (
+                {data.myStreakEntry.monthlyScore > 0 ? (
                   <span style={{
                     fontSize: "0.78rem", fontWeight: 700,
                     padding: "0.2rem 0.55rem", borderRadius: 20,
@@ -1123,7 +1123,7 @@ export default function UserDashboard() {
                     color: "#c4b5fd",
                     whiteSpace: "nowrap",
                   }}>
-                    {data.myStreakEntry.todayScore.toFixed(1)}/100
+                    {Math.round(data.myStreakEntry.monthlyScore)} pts
                   </span>
                 ) : (
                   <span style={{ width: "4rem" }} />

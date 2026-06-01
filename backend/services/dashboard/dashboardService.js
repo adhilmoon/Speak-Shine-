@@ -137,11 +137,11 @@ export async function getUserProfile(phone) {
     : Promise.resolve(status?.todayVocabulary || []);
 
   // ── Leaderboard sort ─────────────────────────────────────────────────────
-  // Submitted today → sorted by todayScore desc (top of table)
+  // Submitted today → sorted by monthlyScore desc (top of table)
   // Not submitted   → sorted by streak desc (below submitted group)
   const submitted = [...allUsers]
     .filter(u => u.completed)
-    .sort((a, b) => (b.todayScore ?? -1) - (a.todayScore ?? -1));
+    .sort((a, b) => (b.monthlyScore ?? 0) - (a.monthlyScore ?? 0));
   const notSubmitted = [...allUsers]
     .filter(u => !u.completed)
     .sort((a, b) => (b.streak || 0) - (a.streak || 0));
@@ -155,7 +155,7 @@ export async function getUserProfile(phone) {
       streak: u.streak || 0,
       weeklySubmissions: u.weeklySubmissions || 0,
       completed: u.completed || false,
-      todayScore: u.todayScore ?? null,
+      monthlyScore: u.monthlyScore ?? 0,
     }));
 
   // Find the current user's rank in the full leaderboard
@@ -171,7 +171,7 @@ export async function getUserProfile(phone) {
     streak: leaderboardSorted[myRankIdx].streak || 0,
     weeklySubmissions: leaderboardSorted[myRankIdx].weeklySubmissions || 0,
     completed: leaderboardSorted[myRankIdx].completed || false,
-    todayScore: leaderboardSorted[myRankIdx].todayScore ?? null,
+    monthlyScore: leaderboardSorted[myRankIdx].monthlyScore ?? 0,
     inTop5: myRankIdx < 5,
   } : null;
 

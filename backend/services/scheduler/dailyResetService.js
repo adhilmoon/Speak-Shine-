@@ -220,7 +220,7 @@ export async function resetMonthlyCounters() {
 
     const result = await User.updateMany(
       {},
-      { $set: { monthlySubmissions: 0 } }
+      { $set: { monthlySubmissions: 0, monthlyScore: 0, lastScoreDate: null } }
     );
 
     return {
@@ -370,6 +370,12 @@ export async function performDailyReset() {
       }
     }, { upsert: true });
     console.log("[DailyReset] ✅ Status flags reset");
+
+    // 8. Reset monthlyScore + lastScoreDate on 1st of month only
+    if (monthlyResult.isFirstDay) {
+      await User.updateMany({}, { $set: { monthlyScore: 0, lastScoreDate: null } });
+      console.log("[DailyReset] ✅ monthlyScore reset to 0 for all users (1st of month)");
+    }
 
     console.log("[DailyReset] 🔄 Daily reset complete");
 

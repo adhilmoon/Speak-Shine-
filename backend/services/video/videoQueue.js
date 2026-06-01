@@ -349,12 +349,33 @@ async function processJob(job) {
               $slice: -30,
             },
           },
-          // Always overwrite todayScore with the latest submission's score
-          ...(compositeScore != null ? { $set: { todayScore: compositeScore } } : {}),
         }
       );
-    } else if (compositeScore != null) {
-      await User.findOneAndUpdate({ phone }, { $set: { todayScore: compositeScore } });
+    }
+
+    // ── Add to monthlyScore once per day (first submission wins) ────────────
+    // Build today's date string in IST so the guard is timezone-correct.
+    // Only increments if lastScoreDate !== today — re-submissions are ignored.
+    // monthlyScore accumulates all month; resets to 0 on the 1st by dailyResetService.
+    if (compositeScore != null) {
+      const nowIST = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+      const y  = nowIST.getFullYear();
+      const mo = String(nowIST.getMonth() + 1).padStart(2, "0");
+      const d  = String(nowIST.getDate()).padStart(2, "0");
+      const todayIST = `${y}-${mo}-${d}`;
+
+      const updated = await User.findOneAndUpdate(
+        { phone, lastScoreDate: { $ne: todayIST } }, // only if not yet scored today
+        {
+          $inc: { monthlyScore: compositeScore },
+          $set: { lastScoreDate: todayIST },
+        }
+      );
+      if (updated) {
+        console.log(`[Queue] 📊 monthlyScore +${compositeScore.toFixed(1)} for ${phone} (${todayIST})`);
+      } else {
+        console.log(`[Queue] ℹ️  monthlyScore not updated — already scored today (${todayIST})`);
+      }
     }
 
     pushProgress(reportId, { status: "completed", percent: 100, stage: "Analysis complete" });
