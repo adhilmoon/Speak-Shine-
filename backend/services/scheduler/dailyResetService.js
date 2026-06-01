@@ -48,13 +48,21 @@ export async function applyDailyFinesAndStreaks() {
       const update = computeMissedDayFineUpdate(u.fine, FINE_AMOUNT);
 
       if (update.setFine !== undefined) {
-        await User.updateOne({ _id: u._id }, { $set: { fine: update.setFine } });
+        await User.updateOne({ _id: u._id }, {
+          $set: {
+            fine: update.setFine,
+            fineChargedToday: update.fineCharged, // track for daily report
+          }
+        });
         if (update.fineCharged) finesApplied++;
         else finesAbsorbed++;
       } else {
         await User.updateOne(
           { _id: u._id },
-          { $inc: { fine: update.incFine, weeklyFine: update.weeklyFineInc } }
+          {
+            $inc: { fine: update.incFine, weeklyFine: update.weeklyFineInc },
+            $set: { fineChargedToday: true }, // track for daily report
+          }
         );
         finesApplied++;
       }
@@ -68,7 +76,10 @@ export async function applyDailyFinesAndStreaks() {
     // ── 2. Submitted today: increment streak ────────────────────────────────
     const submittedUsers = await User.find({ completed: true }).lean();
 
-    await User.updateMany({ completed: true }, { $inc: { streak: 1 } });
+    await User.updateMany({ completed: true }, {
+      $inc: { streak: 1 },
+      $set: { fineChargedToday: false }, // clear flag for submitters
+    });
 
     // ── 4. 7-day streak reward: subtract ₹5 from fine (can go negative) ──
     // Negative fine = "free pass" buffer — absorbs future missed-day fines
@@ -156,7 +167,7 @@ export async function incrementSubmissionCounters() {
  */
 export async function resetDailyFlags() {
   try {
-    const result = await User.updateMany({}, { completed: false });
+    const result = await User.updateMany({}, { completed: false, fineChargedToday: false });
 
     return {
       reset: result.modifiedCount

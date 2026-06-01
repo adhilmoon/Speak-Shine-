@@ -11,6 +11,7 @@ const userSchema = new mongoose.Schema({
   weeklySubmissions: { type: Number, default: 0 },
   weeklyFine: { type: Number, default: 0 },
   monthlySubmissions: { type: Number, default: 0 },
+  fineChargedToday: { type: Boolean, default: false }, // set by daily reset; used by report generator
   feedbackScores: {
     type: [{
       fluency: Number,

@@ -72,7 +72,7 @@ export async function generateDailyReports() {
         // Fine information
         fine: user.fine || 0,
         weeklyFine: user.weeklyFine || 0,
-        fineAdded: !videoReport, // Fine was added if they didn't submit
+        fineAdded: user.fineChargedToday === true, // Only true if fine was actually charged today (not buffer-absorbed)
         
         // Feedback
         overallComment: videoReport?.analysis?.overallComment || null,
